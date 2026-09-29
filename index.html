@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-09-29.7">
+<meta name="ros-build" content="2026-09-29.8">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -785,10 +785,10 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         <label for="st-file" style="display:block;border:1px dashed var(--border-hi);border-radius:var(--rs);padding:18px 12px;text-align:center;cursor:pointer;margin-bottom:10px">
           <div style="font-size:22px;margin-bottom:4px">📄</div>
           <div id="st-file-name" style="font-size:12px;color:var(--text)">Upload this month's stats</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:3px">GVR stats package PDF, a screenshot, or a CSV</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">GVR stats package PDF (plus the Fraser Valley one if you have clients there), a screenshot, or a CSV</div>
         </label>
-        <input id="st-file" type="file" accept="application/pdf,image/*,.csv,.txt" style="display:none" onchange="statsPickFile(event)">
-        <div class="field" style="margin-bottom:10px"><label for="st-area">Your area</label>
+        <input id="st-file" type="file" accept="application/pdf,image/*,.csv,.txt" multiple style="display:none" onchange="statsPickFile(event)">
+        <div class="field" style="margin-bottom:10px"><label for="st-area">Your home area (the headline)</label>
           <input id="st-area" value="Vancouver East" placeholder="Vancouver East">
         </div>
         <div id="st-status" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:6px"></div>
@@ -865,6 +865,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         </select>
       </div>
       <div class="field"><label>Criteria / Property</label><input id="f-criteria" placeholder="East Van detached under $1.4M"></div>
+      <div class="field"><label>Area</label><select id="f-area"></select></div>
       <div class="form-row">
         <div class="field"><label>Budget</label><input id="f-budget" placeholder="$1,400,000"></div>
         <div class="field"><label>Timeline</label>
@@ -1551,6 +1552,7 @@ function confirm2(msg, label, onOk) {
 
 /* ═══ MODALS ═══ */
 function openAddModal()  {
+  const fa = document.getElementById('f-area'); if (fa && !fa.options.length) fa.innerHTML = areaOptions('');
   // pick up an unfinished Smart review where it left off
   if (smartDraft) switchAddTab('full', document.getElementById('add-tab-full'));
   else switchAddTab('smart', document.getElementById('add-tab-smart'));
@@ -1899,6 +1901,7 @@ function renderLeadCard(l) {
       <input class="lc-edit-field" id="ed-phone-${l.id}"    value="${esc(l.phone||'')}"     placeholder="Phone" type="tel"   oninput="autoSave(${l.id})">
       <input class="lc-edit-field" id="ed-email-${l.id}"    value="${esc(l.email||'')}"     placeholder="Email" type="email" oninput="autoSave(${l.id})">
       <input class="lc-edit-field" id="ed-criteria-${l.id}" value="${esc(l.criteria||'')}"  placeholder="${l.type==='seller'?'Property address e.g. 1475 E 11th Ave':'Search criteria e.g. East Van under $1.4M'}" oninput="autoSave(${l.id})">
+      <select class="lc-edit-field" id="ed-area-${l.id}" onchange="autoSave(${l.id})" aria-label="Area">${areaOptions(l.area)}</select>
       ${l.type === 'seller'
         ? `<input class="lc-edit-field" id="ed-budget-${l.id}" value="${esc(l.budget||'')}" placeholder="Asking price e.g. $1,600,000" oninput="autoSave(${l.id})">`
         : `<input class="lc-edit-field" id="ed-budget-${l.id}" value="${esc(l.budget||'')}" placeholder="Max budget e.g. $1,400,000" oninput="autoSave(${l.id})">`
@@ -2592,6 +2595,7 @@ function saveInlineEdit(id) {
   lead.phone       = document.getElementById('ed-phone-'+id)?.value.trim();
   lead.email       = document.getElementById('ed-email-'+id)?.value.trim();
   lead.criteria    = document.getElementById('ed-criteria-'+id)?.value.trim();
+  const areaEl = document.getElementById('ed-area-'+id); if (areaEl) lead.area = areaEl.value;
   lead.budget      = document.getElementById('ed-budget-'+id)?.value.trim();
   lead.timeline    = document.getElementById('ed-timeline-'+id)?.value;
   lead.motivation  = document.getElementById('ed-motivation-'+id)?.value;
@@ -2733,13 +2737,95 @@ function syncAddFields() {
   }
 }
 
-/* ═══ MARKET STATS — AI reads the monthly stats package ═══ */
-let marketStats = load('ros_stats') || [];   // newest first: { id, month, area, fileName, readAt, data }
-let statsFile = null;                        // { name, media_type, data } or { name, text }
+/* ═══ MARKET STATS — AI reads the monthly stats packages ═══ */
+let marketStats = load('ros_stats') || [];   // newest first: { id, month, area, fileName, readAt, data, updates }
+let statsFiles = [];                         // [{ name, media_type, data } | { name, text }]
 let statsViewId = null;
+let statsUpdateBusy = false;
 
+const MARKET_AREAS = {
+  'Greater Vancouver': ['Vancouver East','Vancouver West','Burnaby East','Burnaby North','Burnaby South','New Westminster','Coquitlam','Port Coquitlam','Port Moody','Pitt Meadows','Maple Ridge','North Vancouver','West Vancouver','Richmond','Ladner','Tsawwassen','Bowen Island','Squamish','Whistler','Sunshine Coast'],
+  'Fraser Valley': ['North Delta','North Surrey','Surrey Central','Cloverdale','South Surrey & White Rock','Langley','Abbotsford','Mission']
+};
+const ALL_AREAS = Object.values(MARKET_AREAS).flat();
+function areaOptions(selected) {
+  return `<option value="">— Area —</option>` + Object.entries(MARKET_AREAS).map(([g, list]) =>
+    `<optgroup label="${g}">${list.map(a => `<option ${a === selected ? 'selected' : ''}>${a}</option>`).join('')}</optgroup>`).join('');
+}
+function homeArea() { return (document.getElementById('st-area')?.value || '').trim() || 'Vancouver East'; }
+
+/* Everyone a market update could go to. key: L<id> for leads, P<id> for past clients. */
+function statsPeople() {
+  const out = [];
+  leads.forEach(l => {
+    if (l.type === 'archived' || l.leadType === 'archived' || l.stage === 'Closed' || l.stage === 'Completed') return;
+    const kind = (l.leadType || l.type) === 'seller' ? 'seller lead' : 'buyer lead';
+    out.push({ key: 'L' + l.id, ref: l, kind, name: l.name, first: l.firstName || (l.name || '').split(' ')[0],
+      phone: l.phone, email: l.email, area: l.area || '', about: [l.criteria, l.budget].filter(Boolean).join(' · '),
+      detail: l.notes || '', stage: l.stage || 'New Lead', touched: lastTouchDate(l) });
+  });
+  pastClients.forEach(pc => {
+    out.push({ key: 'P' + pc.id, ref: pc, kind: 'past client', name: pc.name, first: (pc.name || '').split(/[ &,]/)[0],
+      phone: pc.phone, email: pc.email, area: pc.area || '', about: pc.transaction || '', detail: pc.notes || '',
+      stage: pc.closing ? 'Closed ' + fmtDateShort(pc.closing) : 'Past client', touched: pc.lastCheckin ? todayISO(new Date(pc.lastCheckin)) : null });
+  });
+  return out;
+}
+function neededAreas() {
+  const set = new Set([homeArea()]);
+  statsPeople().forEach(p => { if (p.area) set.add(p.area); });
+  return [...set];
+}
+function setPersonArea(key, area) {
+  const id = +key.slice(1);
+  if (key[0] === 'L') { const l = leads.find(x => x.id === id); if (l) { l.area = area; saveLeads(); } }
+  else { const pc = pastClients.find(x => x.id === id); if (pc) { pc.area = area; savePastClients(); } }
+  renderStats();
+}
+
+/* ── AI tags people with an area from their criteria / purchase ── */
+async function tagAreasAI() {
+  const btn = document.getElementById('st-tag-btn'), status = document.getElementById('st-tag-status');
+  const todo = statsPeople().filter(p => !p.area && (p.about || p.detail));
+  if (!todo.length) { status.textContent = 'Nothing to tag: everyone either has an area or has no criteria/address to go on.'; return; }
+  btn.disabled = true; status.textContent = '';
+  let tagged = 0;
+  try {
+    for (let i = 0; i < todo.length; i += 40) {
+      const batch = todo.slice(i, i + 40);
+      btn.textContent = `Tagging ${Math.min(i + 40, todo.length)} of ${todo.length}…`;
+      const prompt = `Assign each person below to one real estate board sub-area, based on what they're looking for or what they bought.
+Allowed areas (use the exact spelling): ${ALL_AREAS.join(', ')}.
+Vancouver hints: East Van = east of Main St or "E" street addresses (Hastings-Sunrise, Grandview-Woodland, Commercial Drive, Renfrew, Collingwood, Killarney, Fraserview, Knight, Main, Victoria, South Van, Champlain Heights, Mount Pleasant east of Main). West Van(couver West, not West Vancouver) = Kitsilano, Fairview, Downtown, West End, Yaletown, Coal Harbour, Kerrisdale, Dunbar, Point Grey, UBC, Marpole, Cambie, Oakridge, Shaughnessy. "West Vancouver" is the separate municipality (Ambleside, Dundarave, British Properties).
+If it's unclear or could be several areas, use null. Never guess.
+
+${batch.map(p => `${p.key} | ${p.kind} | ${[p.about, p.detail].filter(Boolean).join(' | ').slice(0, 220)}`).join('\n')}
+
+Reply with ONLY a JSON object mapping each id to an area or null, e.g. {"L12": "Vancouver East", "P101": null}`;
+      const text = await callAI(prompt, 1500);
+      const m = text.match(/\{[\s\S]*\}/); if (!m) throw new Error('bad reply');
+      const map = JSON.parse(m[0]);
+      batch.forEach(p => {
+        const a = map[p.key];
+        if (a && ALL_AREAS.includes(a)) { p.ref.area = a; tagged++; }
+      });
+    }
+    saveLeads(); savePastClients();
+    status.textContent = `Tagged ${tagged} of ${todo.length}. Check the list below and fix anything that's off.`;
+    statsShowPeople = true;
+  } catch (e) {
+    console.error(e);
+    status.textContent = /Sign in/.test(e.message) ? e.message : "Couldn't tag right now. Try again in a minute.";
+  } finally { btn.disabled = false; btn.textContent = '✦ Tag areas with AI'; renderStats(); }
+}
+let statsShowPeople = false;
+
+/* ── Files ── */
 const fileToBase64 = f => new Promise((res, rej) => {
   const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f);
+});
+const fileToText = f => new Promise((res, rej) => {
+  const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(f);
 });
 function shrinkImage(f, maxSide = 2400) {
   return new Promise((res, rej) => {
@@ -2753,45 +2839,50 @@ function shrinkImage(f, maxSide = 2400) {
     img.onerror = rej; img.src = url;
   });
 }
-
 async function statsPickFile(e) {
-  const f = e.target.files?.[0]; if (!f) return;
+  const picked = [...(e.target.files || [])].slice(0, 3); if (!picked.length) return;
   const status = document.getElementById('st-status'), btn = document.getElementById('st-btn');
-  status.textContent = ''; statsFile = null; btn.disabled = true;
+  status.textContent = ''; statsFiles = []; btn.disabled = true;
   try {
-    const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-    const isImg = (f.type || '').startsWith('image/');
-    if (isPdf) {
-      if (f.size > 12 * 1024 * 1024) throw new Error('That PDF is over 12 MB. Try just the pages for your area.');
-      statsFile = { name: f.name, media_type: 'application/pdf', data: await fileToBase64(f) };
-    } else if (isImg) {
-      const ok = ['image/jpeg','image/png','image/webp','image/gif'].includes(f.type) && f.size < 3.5 * 1024 * 1024;
-      statsFile = ok ? { name: f.name, media_type: f.type, data: await fileToBase64(f) }
-                     : { name: f.name, media_type: 'image/jpeg', data: await shrinkImage(f) };
-    } else {
-      const txt = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(f); });
-      statsFile = { name: f.name, text: txt.slice(0, 60000) };
+    let bytes = 0;
+    for (const f of picked) {
+      const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+      const isImg = (f.type || '').startsWith('image/');
+      if (isPdf) {
+        bytes += f.size;
+        if (bytes > 12 * 1024 * 1024) throw new Error('Those files add up to over 12 MB. Try fewer at once, or just the pages you need.');
+        statsFiles.push({ name: f.name, media_type: 'application/pdf', data: await fileToBase64(f) });
+      } else if (isImg) {
+        const ok = ['image/jpeg','image/png','image/webp','image/gif'].includes(f.type) && f.size < 3.5 * 1024 * 1024;
+        statsFiles.push(ok ? { name: f.name, media_type: f.type, data: await fileToBase64(f) }
+                           : { name: f.name, media_type: 'image/jpeg', data: await shrinkImage(f) });
+      } else {
+        statsFiles.push({ name: f.name, text: (await fileToText(f)).slice(0, 60000) });
+      }
     }
-    document.getElementById('st-file-name').textContent = '✓ ' + f.name;
+    document.getElementById('st-file-name').textContent = '✓ ' + statsFiles.map(f => f.name).join(', ');
     btn.disabled = false;
-  } catch (err) { status.textContent = err.message || "Couldn't open that file."; }
+  } catch (err) { statsFiles = []; status.textContent = err.message || "Couldn't open that file."; }
 }
 
 const STAT_FIELDS = '"sales": number|null, "salesYoY": "e.g. -12.3%"|null, "newListings": number|null, "activeListings": number|null, "salesToActive": "e.g. 14.2%"|null, "benchmark": "e.g. $1,165,300"|null, "benchmarkYoY": "%"|null, "benchmarkMoM": "%"|null, "dom": number|null';
 
-function statsPrompt(area, prev) {
-  const data = statsFile.text ? 'The report data:\n<report>\n' + statsFile.text + '\n</report>\n' : 'The report is attached.\n';
+function statsPrompt(area, areas, prev) {
+  const texts = statsFiles.filter(f => f.text).map(f => `<report name="${f.name}">\n${f.text}\n</report>`).join('\n');
+  const data = texts ? 'Report data:\n' + texts + '\n' : '';
+  const attached = statsFiles.some(f => f.data) ? 'The report(s) are attached.\n' : '';
   const cmp = prev ? `For comparison, the last saved month (${prev.month}, ${prev.area}): ${JSON.stringify({ region: prev.data.region, focus: prev.data.focus })}\n` : '';
-  return `You are reading a monthly real estate statistics report for Chris Zenone, a Vancouver realtor at Oakwyn Realty. His focus area is "${area}".
-${data}${cmp}
+  return `You are reading monthly real estate statistics for Chris Zenone, a Vancouver realtor at Oakwyn Realty. His home area is "${area}".
+${attached}${data}${cmp}
 Reply with ONLY a JSON object, no other text:
 {
  "found": true or false (false if you cannot see a market statistics report),
  "month": "Mon YYYY: the month the stats cover, e.g. Aug 2026",
  "source": "who published it",
  "region": {"name": "the overall region, e.g. Greater Vancouver", ${STAT_FIELDS}},
- "focus": {"name": "the closest match to ${area} in the report, or null if it has no area breakdown", ${STAT_FIELDS}},
+ "focus": {"name": "${area} as named in the report, or null if the report doesn't cover it", ${STAT_FIELDS}},
  "byType": [{"type": "Detached|Townhouse|Apartment", "area": "which area these numbers are for", "benchmark": "$"|null, "yoy": "%"|null, "mom": "%"|null, "sales": number|null}],
+ "areas": [{"name": "area name exactly as in this list: ${areas.join(', ')}", ${STAT_FIELDS}, "byType": [{"type": "Detached|Townhouse|Apartment", "benchmark": "$"|null, "yoy": "%"|null, "mom": "%"|null}]}],
  "headline": "one plain-English sentence: what changed this month and why it matters",
  "marketType": "buyer's" | "balanced" | "seller's",
  "talkingPoints": ["3-4 short points Chris can say to clients: what this means for buyers, for sellers, and for his area"],
@@ -2800,44 +2891,73 @@ Reply with ONLY a JSON object, no other text:
  "email": "a short newsletter paragraph, 4-6 sentences"
 }
 RULES:
-- Use ONLY numbers printed in the report. Never estimate or calculate a number that isn't there; use null instead.
-- byType: prefer the focus area's numbers; fall back to the overall region if the report has no area split.
-- marketType: sales-to-active ratio under 12% = buyer's, 12-20% = balanced, over 20% = seller's (use the focus area if available).
+- Use ONLY numbers printed in the report(s). Never estimate or calculate a number that isn't there; use null instead.
+- "areas": include every area from that list that appears in the report(s), with its own numbers. Leave out areas that aren't in the report(s).
+- byType (top level): the home area's numbers; fall back to the overall region if there's no area split.
+- marketType: sales-to-active ratio under 12% = buyer's, 12-20% = balanced, over 20% = seller's (home area if available).
+- If the report doesn't cover the home area (e.g. a Fraser Valley report), set focus to null and write the headline and copy about the region the report does cover.
 - Voice: Chris is direct, warm, and real. No hype. Never use "excited", "amazing", "hot market", "don't miss out", "touching base".
-- Write for people in ${area}, not a generic audience. Say "benchmark price", not "average price", when quoting benchmarks.`;
+- Say "benchmark price", not "average price", when quoting benchmarks.`;
+}
+
+function mergeAreas(a = [], b = []) {
+  const map = new Map(); [...a, ...b].forEach(x => { if (x && x.name) map.set(x.name, x); });
+  return [...map.values()];
 }
 
 async function readStats() {
-  if (!statsFile) return;
+  if (!statsFiles.length) return;
   const status = document.getElementById('st-status'), btn = document.getElementById('st-btn');
-  const area = document.getElementById('st-area').value.trim() || 'Vancouver East';
+  const area = homeArea(), areas = neededAreas();
   status.textContent = ''; btn.disabled = true; btn.textContent = 'Reading… (up to a minute)';
   try {
-    const files = statsFile.data ? [{ media_type: statsFile.media_type, data: statsFile.data }] : [];
-    const text = await callAI(statsPrompt(area, marketStats[0]), 3000, files);
+    const files = statsFiles.filter(f => f.data).map(f => ({ media_type: f.media_type, data: f.data }));
+    const text = await callAI(statsPrompt(area, areas, marketStats[0]), 4000, files);
     const m = text.match(/\{[\s\S]*\}/);
     if (!m) throw new Error('bad reply');
     const d = JSON.parse(m[0]);
-    if (!d.found) throw new Error(statsFile.data
+    if (!d.found) throw new Error(files.length
       ? "The AI couldn't see a stats report in that file. If this keeps happening, the AI function in Supabase needs the update I sent."
       : "That file didn't look like a stats report.");
-    const rec = { id: makeId(), month: d.month || '', area: (d.focus && d.focus.name) || (d.region && d.region.name) || area,
-                  fileName: statsFile.name, readAt: new Date().toISOString(), data: d };
-    marketStats = [rec, ...marketStats.filter(r => !(r.month === rec.month && r.area === rec.area))].slice(0, 24);
+    d.areas = (d.areas || []).filter(a => a && a.name);
+    if (d.focus && d.focus.name && d.focus.benchmark && !d.areas.some(a => a.name === area))
+      d.areas.push({ ...d.focus, name: area, byType: (d.byType || []).map(({ type, benchmark, yoy, mom }) => ({ type, benchmark, yoy, mom })) });
+    const names = statsFiles.map(f => f.name).join(', ');
+
+    // Same month uploaded again (e.g. the Fraser Valley report after GVR): merge the areas.
+    const old = marketStats.find(r => r.month === d.month);
+    const hasHome = !!(d.focus && d.focus.benchmark);
+    let rec;
+    if (old) {
+      const data = hasHome || !old.data.focus?.benchmark
+        ? { ...d, areas: mergeAreas(old.data.areas, d.areas) }
+        : { ...old.data, areas: mergeAreas(old.data.areas, d.areas), source: [old.data.source, d.source].filter(Boolean).join(' + ') };
+      rec = { ...old, data, fileName: [old.fileName, names].filter(Boolean).join(', '), readAt: new Date().toISOString(),
+              area: (data.focus && data.focus.name) || (data.region && data.region.name) || area };
+      marketStats = [rec, ...marketStats.filter(r => r !== old)];
+    } else {
+      rec = { id: makeId(), month: d.month || '', area: hasHome ? d.focus.name : ((d.region && d.region.name) || area),
+              fileName: names, readAt: new Date().toISOString(), data: d, updates: {} };
+      marketStats = [rec, ...marketStats].slice(0, 24);
+    }
+    marketStats.sort((a, b) => monthKey(b.month) - monthKey(a.month));
     save('ros_stats', marketStats);
 
-    // keep the Today market bar current
-    const src = (d.focus && d.focus.benchmark) ? d.focus : (d.region || {});
-    market = { ...market, month: d.month || market.month, area: rec.area,
-      price: src.benchmark || market.price, ratio: src.salesToActive || market.ratio,
-      dom: src.dom != null ? String(src.dom) : '',
-      listings: src.newListings != null ? Number(src.newListings).toLocaleString() : (market.listings || '') };
-    save(KEYS.market, market); renderMarket(); renderDailyFocus();
-    localStorage.removeItem('ros_briefing_date'); // next briefing uses the new numbers
+    // keep the market numbers the AI uses current (home area first)
+    const src = rec.data.focus && rec.data.focus.benchmark ? rec.data.focus : (rec.data.region || {});
+    if (src.benchmark && rec === marketStats[0]) {
+      market = { ...market, month: rec.month || market.month, area: rec.area,
+        price: src.benchmark, ratio: src.salesToActive || market.ratio,
+        dom: src.dom != null ? String(src.dom) : '',
+        listings: src.newListings != null ? Number(src.newListings).toLocaleString() : (market.listings || '') };
+      save(KEYS.market, market); renderMarket(); renderDailyFocus();
+      localStorage.removeItem('ros_briefing_date');
+    }
 
-    statsViewId = rec.id; renderStats();
-    statsFile = null; document.getElementById('st-file').value = '';
+    statsViewId = rec.id; statsFiles = [];
+    document.getElementById('st-file').value = '';
     document.getElementById('st-file-name').textContent = "Upload this month's stats";
+    renderStats();
     toast(`${rec.month} stats saved ✓`);
     document.getElementById('st-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
@@ -2847,10 +2967,141 @@ async function readStats() {
       : "Couldn't read that file. Try again, or try a screenshot of the page for your area.";
   } finally {
     btn.textContent = '✦ Read stats & write my update';
-    btn.disabled = !statsFile;
+    btn.disabled = !statsFiles.length;
   }
 }
 
+/* ── Stats for one area, used by the update run and by follow-ups ── */
+function monthKey(m) { // "Aug 2026" -> 202607, sortable; Safari-safe (no Date parsing)
+  const x = String(m || '').trim().match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{4})$/);
+  if (!x) return 0;
+  const i = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(x[1].toLowerCase());
+  return i < 0 ? 0 : +x[2] * 100 + i;
+}
+function latestStats() { return marketStats[0] || null; }
+function statsForArea(rec, area) {
+  if (!rec || !rec.data) return null;
+  return (rec.data.areas || []).find(a => a.name === area) || null;
+}
+function areaStatLine(rec, area) {
+  const a = statsForArea(rec, area);
+  const r = rec && rec.data && rec.data.region;
+  const fmt = (x, label) => {
+    const parts = [x.benchmark && `${x.benchmark} benchmark${x.benchmarkYoY ? ` (${x.benchmarkYoY} vs last year)` : ''}`,
+      x.salesToActive && `${x.salesToActive} sales-to-active`, x.sales != null && `${x.sales} sales${x.salesYoY ? ` (${x.salesYoY} yr)` : ''}`].filter(Boolean);
+    const types = (x.byType || []).filter(t => t.benchmark).map(t => `${t.type} ${t.benchmark}${t.yoy ? ` (${t.yoy} yr)` : ''}`);
+    return `${label} (${rec.month}): ${parts.join(', ')}${types.length ? '. By type: ' + types.join('; ') : ''}`;
+  };
+  if (a) return fmt(a, a.name);
+  if (r && r.benchmark) return fmt(r, `${r.name || 'Region'} overall (no numbers for ${area || 'their area'})`);
+  return null;
+}
+function statsAreFresh(rec) {
+  if (!rec) return false;
+  const fmtM = d => d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toLowerCase();
+  const now = new Date(), prev = new Date(now.getFullYear(), now.getMonth() - 1, 1), prev2 = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  return [fmtM(now), fmtM(prev), fmtM(prev2)].includes(String(rec.month).trim().toLowerCase());
+}
+/* Used in the follow-up prompt: the numbers that matter to this lead. */
+function aiAreaLine(lead) {
+  const rec = latestStats();
+  if (!statsAreFresh(rec)) return aiMarketLine();
+  return areaStatLine(rec, lead.area) || aiMarketLine();
+}
+
+/* ── Monthly market-update run ── */
+function updateCandidates(rec) {
+  const ups = rec.updates || {};
+  return statsPeople().filter(p => (p.phone || p.email) && (ups[p.key] || !(p.touched && daysSince(p.touched) < 5)));
+}
+async function writeMarketUpdates() {
+  const rec = marketStats.find(r => r.id === statsViewId) || marketStats[0];
+  if (!rec || statsUpdateBusy) return;
+  rec.updates = rec.updates || {};
+  const todo = updateCandidates(rec).filter(p => !rec.updates[p.key]);
+  const btn = document.getElementById('st-run-btn'), status = document.getElementById('st-run-status');
+  if (!todo.length) { status.textContent = 'Everyone already has a draft.'; return; }
+  statsUpdateBusy = true; btn.disabled = true; status.textContent = '';
+  const todayStr = new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  let done = 0;
+  try {
+    for (let i = 0; i < todo.length; i += 8) {
+      const batch = todo.slice(i, i + 8);
+      btn.textContent = `Writing ${Math.min(i + 8, todo.length)} of ${todo.length}…`;
+      const people = batch.map(p => [
+        `ID: ${p.key}`, `First name: ${p.first}`, `Who: ${p.kind} (${p.stage})`,
+        `Area: ${p.area || 'unknown'}`, p.about && `Looking for / bought: ${p.about}`,
+        `Last contact: ${p.touched ? `${fmtDateShort(p.touched)} (${agoText(p.touched)})` : 'never logged'}`,
+        `Numbers for them: ${areaStatLine(rec, p.area) || 'none'}`].filter(Boolean).join('\n')).join('\n\n');
+      const prompt = `Write a short personal market-update text from Chris Zenone (Vancouver realtor, Oakwyn) to each person below. TODAY is ${todayStr}. The stats are for ${rec.month}.
+
+${people}
+
+RULES for each text:
+- Max 2 sentences, under 40 words. Use their first name. No sign-off (it's sent from Chris's phone).
+- Use ONE real number from "Numbers for them" that fits the person: their property type if you can tell (condo/apartment, townhouse, detached), otherwise their area's benchmark or sales-to-active ratio. Never invent or round a number differently.
+- Past clients: tell them what homes like theirs did. Never state what their own home is worth.
+- Buyer leads: what it means for their search (leverage, choice, competition). Seller leads: what it means for pricing or timing.
+- If the numbers are "overall (no numbers for ...)", say it's across the region, not their area.
+- If last contact was over 60 days ago or never, open naturally without pretending you spoke recently.
+- End with an easy yes/no question or offer (e.g. pull numbers for their street, send a few listings).
+- Chris is direct, warm, and real. Never: "excited", "amazing", "hot market", "touching base", "checking in", "hope you're well".
+Reply with ONLY a JSON object mapping each ID to its text, e.g. {"L12": "…", "P101": "…"}`;
+      const text = await callAI(prompt, 1800);
+      const m = text.match(/\{[\s\S]*\}/); if (!m) throw new Error('bad reply');
+      const map = JSON.parse(m[0]);
+      batch.forEach(p => {
+        if (typeof map[p.key] === 'string' && map[p.key].trim()) { rec.updates[p.key] = { text: map[p.key].trim(), status: 'draft' }; done++; }
+      });
+      save('ros_stats', marketStats);
+      renderStats();
+    }
+    status.textContent = `${done} drafts ready. Read each one before you send it.`;
+  } catch (e) {
+    console.error(e);
+    status.textContent = (done ? `${done} written, then it stopped. Tap again to finish the rest. ` : '') + (/Sign in/.test(e.message) ? e.message : '');
+    if (!done && !/Sign in/.test(e.message)) status.textContent = "Couldn't write the updates right now. Try again in a minute.";
+  } finally { statsUpdateBusy = false; renderStats(); }
+}
+function statsRec() { return marketStats.find(r => r.id === statsViewId) || marketStats[0]; }
+function editUpdate(key, el) {
+  const rec = statsRec(); if (!rec || !rec.updates || !rec.updates[key]) return;
+  rec.updates[key].text = el.value;
+  clearTimeout(editUpdate._t); editUpdate._t = setTimeout(() => save('ros_stats', marketStats), 600);
+}
+function logUpdateSent(p, text) {
+  const note = `📊 Sent market update — "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}"`;
+  if (p.key[0] === 'L') {
+    const l = p.ref; l.activityLog = l.activityLog || [];
+    l.activityLog.push({ date: new Date().toISOString(), note, type: '💬 Texted' });
+    l.lastContact = 'Today'; l.lastContactDate = todayISO(); saveLeads(); renderLeads(); renderDailyFocus();
+  } else {
+    const pc = p.ref; pc.lastCheckin = new Date().toISOString();
+    pc.notes = [`${fmtDateShort(new Date().toISOString())}: ${note}`, pc.notes].filter(Boolean).join('\n');
+    savePastClients(); renderPastClients();
+  }
+}
+function sendUpdate(key, via) {
+  const rec = statsRec(); const u = rec && rec.updates && rec.updates[key];
+  const p = statsPeople().find(x => x.key === key);
+  if (!u || !p) return;
+  const text = (document.getElementById('st-up-' + key)?.value || u.text).trim();
+  u.text = text; u.status = 'sent'; u.sentAt = new Date().toISOString(); u.via = via;
+  save('ros_stats', marketStats);
+  logUpdateSent(p, text);
+  renderStats();
+  const url = via === 'email'
+    ? `mailto:${p.email}?subject=${encodeURIComponent(`${p.area || 'Market'} update · ${rec.month}`)}&body=${encodeURIComponent(text + '\n\nChris')}`
+    : `sms:${String(p.phone).replace(/[^\d+]/g, '')}&body=${encodeURIComponent(text)}`;
+  window.location.href = url;
+}
+function skipUpdate(key) {
+  const rec = statsRec(); if (!rec || !rec.updates || !rec.updates[key]) return;
+  rec.updates[key].status = rec.updates[key].status === 'skipped' ? 'draft' : 'skipped';
+  save('ros_stats', marketStats); renderStats();
+}
+
+/* ── Rendering ── */
 function stDelta(v) {
   if (v == null || v === '') return '';
   const s = String(v).trim(), neg = /^[-−]/.test(s);
@@ -2865,19 +3116,84 @@ function stCopy(title, id, text) {
   if (!text) return '';
   return `<div class="st-copy"><div class="st-copy-h"><span>${title}</span><button onclick="copyText('${id}',this)">Copy</button></div><div class="st-copy-t" id="${id}">${esc(text)}</div></div>`;
 }
+const stLabel = t => `<div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);margin:4px 0 6px">${t}</div>`;
+
+function renderAreasCard(rec) {
+  const people = statsPeople(), untagged = people.filter(p => !p.area);
+  const counts = {}; people.forEach(p => { if (p.area) counts[p.area] = (counts[p.area] || 0) + 1; });
+  const areas = rec ? (rec.data.areas || []) : [];
+  const wanted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  const rows = wanted.map(name => {
+    const a = areas.find(x => x.name === name);
+    return `<tr><td>${esc(name)}</td><td>${a ? esc(a.benchmark || '—') : '<span style="color:var(--muted)">not in report</span>'}</td><td>${a ? (stDelta(a.benchmarkYoY) || '—') : ''}</td><td>${a ? esc(a.salesToActive || '—') : ''}</td><td>${counts[name]}</td></tr>`;
+  }).join('');
+  const missing = rec ? wanted.filter(n => !areas.some(a => a.name === n)) : [];
+  const fv = missing.filter(n => MARKET_AREAS['Fraser Valley'].includes(n));
+  return `<div class="calc-card" style="margin-bottom:14px">
+    ${stLabel("Your clients' areas")}
+    ${wanted.length ? `<table class="st-table"><thead><tr><th>Area</th><th>Benchmark</th><th>Year</th><th>S/A</th><th>👥</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+    ${fv.length ? `<div style="font-size:11px;color:var(--hot);line-height:1.5;margin-bottom:8px">${esc(fv.join(', '))} ${fv.length > 1 ? 'are' : 'is'} in the Fraser Valley board's area. Upload their monthly report too and it'll be added to ${esc(rec.month)}.</div>` : ''}
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${people.length - untagged.length} of ${people.length} people have an area.${untagged.length ? ' Untagged people get the regional numbers.' : ''}</div>
+    <div id="st-tag-status" style="font-size:11px;color:var(--text-dim);min-height:0;margin-bottom:6px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="lq-btn primary" id="st-tag-btn" onclick="tagAreasAI()" ${untagged.length ? '' : 'disabled style="opacity:.5"'}>✦ Tag areas with AI</button>
+      <button class="lq-btn" onclick="statsShowPeople=!statsShowPeople;renderStats()">${statsShowPeople ? 'Hide list' : 'Review / edit'}</button>
+    </div>
+    ${statsShowPeople ? `<div style="margin-top:10px">${people.map(p => `
+      <div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--text)">${esc(p.name)} <span style="font-size:9px;color:var(--muted)">${esc(p.kind)}</span></div>
+          <div style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.about || p.detail || 'no criteria')}</div></div>
+        <select style="width:46%;padding:6px;font-size:11px" onchange="setPersonArea('${p.key}',this.value)">${areaOptions(p.area)}</select>
+      </div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+function renderUpdateRun(rec) {
+  const ups = rec.updates || {};
+  const cands = updateCandidates(rec);
+  const people = cands.filter(p => ups[p.key]);
+  const pending = cands.filter(p => !ups[p.key]).length;
+  const sent = people.filter(p => ups[p.key].status === 'sent').length;
+  const order = { draft: 0, skipped: 1, sent: 2 };
+  people.sort((a, b) => order[ups[a.key].status] - order[ups[b.key].status]);
+  const fresh = statsAreFresh(rec);
+  return `<div class="calc-card" style="margin-bottom:14px">
+    ${stLabel(`Market updates · ${esc(rec.month)}`)}
+    <div style="font-size:12px;color:var(--text-dim);line-height:1.55;margin-bottom:10px">A personal text for each lead and past client, using their own area's numbers. Tap <b>Text</b> to open Messages with it filled in; the touch is logged for you.${fresh ? '' : ' <span style="color:var(--hot)">These stats are a few months old. Upload the latest first.</span>'}</div>
+    ${people.length ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${sent} of ${people.length} sent</div>` : ''}
+    <div id="st-run-status" style="font-size:11px;color:var(--text-dim);margin-bottom:6px"></div>
+    ${pending ? `<button class="gen-btn" id="st-run-btn" onclick="writeMarketUpdates()">✦ Write market updates · ${pending} ${pending === 1 ? 'person' : 'people'}</button>` : ''}
+    ${people.map(p => {
+      const u = ups[p.key], done = u.status === 'sent', skipped = u.status === 'skipped';
+      return `<div style="border-top:1px solid var(--border);padding:10px 0;${done || skipped ? 'opacity:.55' : ''}">
+        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">
+          <div style="font-size:12px;color:var(--text)">${esc(p.name)} <span style="font-size:9px;color:var(--muted)">${esc(p.kind)}${p.area ? ' · ' + esc(p.area) : ''}</span></div>
+          <div style="font-size:10px;color:${done ? 'var(--green)' : 'var(--muted)'}">${done ? '✓ sent' : skipped ? 'skipped' : ''}</div>
+        </div>
+        ${done ? `<div style="font-size:11px;color:var(--text-dim);line-height:1.5">${esc(u.text)}</div>` : `
+        <textarea id="st-up-${p.key}" rows="3" style="font-size:12px;line-height:1.5;margin-bottom:6px" oninput="editUpdate('${p.key}',this)" ${skipped ? 'disabled' : ''}>${esc(u.text)}</textarea>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:6px">
+          ${skipped ? '<div></div>' : p.phone ? `<button class="lq-btn primary" onclick="sendUpdate('${p.key}','text')">💬 Text ${esc(p.first)}</button>`
+                                  : `<button class="lq-btn primary" onclick="sendUpdate('${p.key}','email')">✉ Email ${esc(p.first)}</button>`}
+          <button class="lq-btn" onclick="skipUpdate('${p.key}')">${skipped ? 'Undo skip' : 'Skip'}</button>
+        </div>`}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
 
 function renderStats() {
   const out = document.getElementById('st-result'), hist = document.getElementById('st-history');
   if (!out) return;
-  const rec = marketStats.find(r => r.id === statsViewId) || marketStats[0];
-  if (!rec) { out.innerHTML = ''; hist.innerHTML = ''; return; }
-  const d = rec.data || {}, f = (d.focus && d.focus.name) ? d.focus : null, r = d.region || {};
+  const rec = statsRec();
+  if (!rec) { out.innerHTML = renderAreasCard(null); hist.innerHTML = ''; return; }
+  const d = rec.data || {}, f = (d.focus && d.focus.name && d.focus.benchmark) ? d.focus : null, r = d.region || {};
   const main = f || r;
   const types = (d.byType || []).filter(t => t && (t.benchmark || t.sales != null));
   const prior = marketStats[marketStats.indexOf(rec) + 1];
   let vsPrior = '';
   if (prior && prior.data) {
-    const pm = (prior.data.focus && prior.data.focus.name ? prior.data.focus : prior.data.region) || {};
+    const pm = (prior.data.focus && prior.data.focus.benchmark ? prior.data.focus : prior.data.region) || {};
     const num = v => parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''));
     const a = num(main.salesToActive), b = num(pm.salesToActive);
     if (!isNaN(a) && !isNaN(b)) vsPrior = `${a > b ? 'Up' : a < b ? 'Down' : 'Flat'} from ${pm.salesToActive} in ${prior.month}`;
@@ -2900,15 +3216,16 @@ function renderStats() {
     ${f && r.name ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${esc(r.name)}: ${esc(r.benchmark || '—')} benchmark${r.benchmarkYoY ? ' (' + stDelta(r.benchmarkYoY) + ' yr)' : ''} · ${esc(r.salesToActive || '—')} sales-to-active</div>` : ''}
     ${types.length ? `<table class="st-table"><thead><tr><th>${esc(types[0].area || 'By type')}</th><th>Benchmark</th><th>Year</th><th>Month</th></tr></thead><tbody>
       ${types.map(t => `<tr><td>${esc(t.type)}</td><td>${esc(t.benchmark || '—')}</td><td>${stDelta(t.yoy) || '—'}</td><td>${stDelta(t.mom) || '—'}</td></tr>`).join('')}</tbody></table>` : ''}
-    ${(d.talkingPoints || []).length ? `<div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);margin:4px 0 6px">What to tell people</div>
-      <ul style="margin:0 0 4px 16px;padding:0;font-size:12px;line-height:1.6;color:var(--text-dim)">${d.talkingPoints.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${(d.talkingPoints || []).length ? stLabel('What to tell people') + `<ul style="margin:0 0 4px 16px;padding:0;font-size:12px;line-height:1.6;color:var(--text-dim)">${d.talkingPoints.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
   </div>
-  ${stCopy('💬 Client text', 'st-text', d.clientText)}
+  ${renderAreasCard(rec)}
+  ${renderUpdateRun(rec)}
+  ${stCopy('💬 General client text', 'st-text', d.clientText)}
   ${stCopy('📸 Instagram caption', 'st-ig', d.instagram)}
   ${stCopy('✉ Email / newsletter', 'st-email', d.email)}
   <div style="font-size:10px;color:var(--muted);line-height:1.5;margin:4px 0 16px">Read from ${esc(rec.fileName || 'your file')}${d.source ? ' · ' + esc(d.source) : ''}. Spot-check the numbers against the report before you send anything to clients.</div>`;
   hist.innerHTML = marketStats.length > 1 ? `<div class="sh" style="margin:6px 0 8px">Past months</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">${marketStats.map(x => `<button class="tools-hub-btn ${x === rec ? 'on' : ''}" style="padding:6px 10px" onclick="statsViewId=${x.id};renderStats()">${esc(x.month)}${x.area ? ' · ' + esc(x.area) : ''}</button>`).join('')}</div>` : '';
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${marketStats.map(x => `<button class="tools-hub-btn ${x === rec ? 'on' : ''}" style="padding:6px 10px" onclick="statsViewId=${x.id};renderStats()">${esc(x.month)}</button>`).join('')}</div>` : '';
 }
 
 /* ═══ SMART ADD — AI turns a messy note into a lead ═══ */
@@ -2936,6 +3253,7 @@ Reply with ONLY a JSON object, no other text:
  "priority": "hot" | "warm" | "cold",
  "source": "Open House" | "Referral" | "Sphere" | "Wentworth" | "Instagram" | "Other",
  "criteria": "short property criteria, e.g. 2 bed Mount Pleasant condo under $900K",
+ "area": one of ${JSON.stringify(ALL_AREAS)} or "" if unclear (East Van = east of Main St; "Vancouver West" is Kits, Fairview, Downtown, Kerrisdale etc.; "West Vancouver" is the separate municipality),
  "budget": "e.g. $900,000 or empty",
  "timeline": "" | "ASAP" | "1-3 months" | "3-6 months" | "6-12 months" | "Just browsing",
  "motivation": "" | "Must move" | "Serious" | "Casually looking" | "Just browsing",
@@ -2966,6 +3284,7 @@ function fillFullForm(d, raw) {
   set('f-fname', d.firstName); set('f-lname', d.lastName);
   set('f-phone', d.phone); set('f-email', d.email);
   set('f-criteria', d.criteria); set('f-budget', d.budget); set('f-notes', d.notes);
+  const fa = document.getElementById('f-area'); if (fa) { fa.innerHTML = areaOptions(ALL_AREAS.includes(d.area) ? d.area : ''); }
   pick('f-type', d.type === 'seller' ? 'seller' : 'buyer');
   pick('f-source', d.source); pick('f-timeline', d.timeline);
   pick('f-motivation', d.motivation); pick('f-preapproved', d.preApproved);
@@ -3019,12 +3338,13 @@ function saveFullLead() {
     stage:'New Lead', lastContact:'Today',
     notes:document.getElementById('f-notes').value.trim(),
     followUpDate:document.getElementById('f-followup').value || null,
+    area:document.getElementById('f-area')?.value || '',
     priority:smartDraft?.priority || undefined,
     lastContactDate:todayISO(),
     activityLog: smartDraft ? [{ date:new Date().toISOString(), note:'Captured: ' + smartDraft.raw }] : [], tags:[] });
   saveLeads(); renderLeads(); closeModal('modal-bg');
   ['f-fname','f-lname','f-phone','f-email','f-criteria','f-budget','f-notes','f-followup','s-raw'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  ['f-type','f-timeline','f-motivation','f-preapproved','f-source'].forEach(id => { const el = document.getElementById(id); if(el) el.selectedIndex = 0; });
+  ['f-type','f-timeline','f-motivation','f-preapproved','f-source','f-area'].forEach(id => { const el = document.getElementById(id); if(el) el.selectedIndex = 0; });
   smartDraft = null; document.getElementById('f-smart-banner').style.display = 'none';
   toast(`${name} added ✓`);
 }
@@ -3076,7 +3396,7 @@ ${aiTimeline(lead)}
 - Last conversation note (undated, may be old): ${lead.lastConv||'None'}
 ${ctx?`- Additional context from Chris: ${ctx}`:''}
 
-MARKET: ${aiMarketLine()}
+MARKET FOR THIS LEAD: ${aiAreaLine(lead)}
 
 WRITE: A ${channelLabel} — tone: ${toneMap[ui.tone]}
 
