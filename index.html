@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-09-29.5">
+<meta name="ros-build" content="2026-09-29.7">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -297,6 +297,21 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
 
 /* COMMISSION CALC */
 .calc-wrap{padding:0 12px}
+.st-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.st-tile{background:var(--card2);border:1px solid var(--border);border-radius:var(--rs);padding:10px}
+.st-tile .v{font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--text);line-height:1.1}
+.st-tile .l{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:3px}
+.st-tile .d{font-size:10px;margin-top:4px;color:var(--text-dim)}
+.st-up{color:var(--green)} .st-down{color:var(--red)}
+.st-chip{display:inline-block;flex-shrink:0;font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:20px;border:1px solid var(--border-hi);color:var(--text-dim)}
+.st-table{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0 12px}
+.st-table th{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:400;text-align:right;padding:5px 4px;border-bottom:1px solid var(--border)}
+.st-table th:first-child,.st-table td:first-child{text-align:left}
+.st-table td{padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.st-copy{background:var(--card2);border:1px solid var(--border);border-radius:var(--rs);padding:10px;margin-bottom:10px}
+.st-copy-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim)}
+.st-copy-h button{background:none;border:1px solid var(--border-hi);border-radius:14px;color:var(--text-dim);font-size:10px;padding:3px 10px;min-height:26px}
+.st-copy-t{font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap}
 .calc-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px}
 .calc-result{background:var(--card2);border-radius:var(--r);padding:14px;margin-top:14px}
 .calc-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
@@ -678,6 +693,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
     <button class="tools-hub-btn" id="thb-cheatsheet" onclick="switchToolsTab('cheatsheet',this)">🏠 Prep</button>
     <button class="tools-hub-btn" id="thb-notes" onclick="switchToolsTab('notes',this)">📌 Notes</button>
     <button class="tools-hub-btn" id="thb-archive" onclick="switchToolsTab('archive',this)">🚫 Archive</button>
+    <button class="tools-hub-btn" id="thb-stats" onclick="switchToolsTab('stats',this)">📊 Stats</button>
   </div>
   <div id="tools-showings-panel">
     <div class="sh">Schedule</div>
@@ -760,6 +776,26 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         <button onclick="addNoteTools()" style="flex-shrink:0;padding:0 16px;background:var(--gold);border:none;border-radius:var(--rs);color:#080807;font-size:18px;min-height:40px">+</button>
       </div>
       <div id="tools-notes-list"></div>
+    </div>
+  </div>
+  <div id="tools-stats-panel" style="display:none">
+    <div class="sh">Monthly Market Stats</div>
+    <div style="padding:0 12px 24px">
+      <div class="calc-card" style="margin-bottom:14px">
+        <label for="st-file" style="display:block;border:1px dashed var(--border-hi);border-radius:var(--rs);padding:18px 12px;text-align:center;cursor:pointer;margin-bottom:10px">
+          <div style="font-size:22px;margin-bottom:4px">📄</div>
+          <div id="st-file-name" style="font-size:12px;color:var(--text)">Upload this month's stats</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px">GVR stats package PDF, a screenshot, or a CSV</div>
+        </label>
+        <input id="st-file" type="file" accept="application/pdf,image/*,.csv,.txt" style="display:none" onchange="statsPickFile(event)">
+        <div class="field" style="margin-bottom:10px"><label for="st-area">Your area</label>
+          <input id="st-area" value="Vancouver East" placeholder="Vancouver East">
+        </div>
+        <div id="st-status" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:6px"></div>
+        <button class="gen-btn" id="st-btn" onclick="readStats()" disabled>✦ Read stats &amp; write my update</button>
+      </div>
+      <div id="st-result"></div>
+      <div id="st-history"></div>
     </div>
   </div>
   <div id="tools-archive-panel" style="display:none">
@@ -1094,7 +1130,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
 const ROS = (() => {
   const SUPABASE_URL = 'https://ffudeimvudfcdgqmpgrr.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_bWXLJES2-7sbm3cYXa5XKg_kwZ15dfh'; // public by design; data is protected by row-level security
-  const SYNC_KEYS = ['ros_leads','ros_past','ros_market','ros_focus_done','ros_showings','ros_notes'];
+  const SYNC_KEYS = ['ros_leads','ros_past','ros_market','ros_focus_done','ros_showings','ros_notes','ros_stats'];
   const PENDING = 'ros_sync_pending';   // { key: editedAtMs }
   const JOINED  = 'ros_sync_user';      // user id this device has synced with
   const LAST    = 'ros_sync_last';
@@ -1189,9 +1225,9 @@ const ROS = (() => {
     try {
       leads = load(KEYS.leads) || []; pastClients = load(KEYS.past) || [];
       market = load(KEYS.market) || market; focusDone = load(KEYS.focusDone) || {};
-      showings = load(KEYS.showings) || []; notes = load('ros_notes') || [];
+      showings = load(KEYS.showings) || []; notes = load('ros_notes') || []; marketStats = load('ros_stats') || [];
       ['renderLeads','renderDailyFocus','renderPipeline','renderPastClients','renderNotes','renderShowings',
-       'renderMarket','renderShowingsTools','renderNotesTools','renderArchiveTools'].forEach(f => {
+       'renderMarket','renderShowingsTools','renderNotesTools','renderArchiveTools','renderStats'].forEach(f => {
         try { if (typeof window[f] === 'function') window[f](); } catch (e) { console.error(f, e); }
       });
     } catch (e) { console.error(e); location.reload(); }
@@ -1343,6 +1379,7 @@ const ROS = (() => {
     ros_focus_done: () => typeof focusDone !== 'undefined' ? focusDone : {},
     ros_showings: () => typeof showings !== 'undefined' ? showings : [],
     ros_notes: () => typeof notes !== 'undefined' ? notes : [],
+    ros_stats: () => typeof marketStats !== 'undefined' ? marketStats : [],
   };
   const localValue = k => { const v = readJSON(k, null); return v !== null ? v : LOCAL_FALLBACK[k](); };
 
@@ -1408,11 +1445,11 @@ const ROS = (() => {
 /* ═══ CONSTANTS ═══ */
 const KEYS = { leads:'ros_leads', past:'ros_past', market:'ros_market', focusDone:'ros_focus_done', showings:'ros_showings' };
 const GEMINI_KEY = '';
-async function callAI(prompt, maxTokens = 500) {
+async function callAI(prompt, maxTokens = 500, files = []) {
   // Goes through the Supabase "ai" function, which holds the Anthropic key server-side.
   const signedIn = await ROS.ready;
   if (!signedIn || !ROS.sb) throw new Error('Sign in to use AI features');
-  const { data, error } = await ROS.sb.functions.invoke('ai', { body: { prompt, maxTokens } });
+  const { data, error } = await ROS.sb.functions.invoke('ai', { body: { prompt, maxTokens, files } });
   if (error) {
     let msg = error.message;
     try { const body = await error.context.json(); msg = body?.error?.message || msg; } catch {}
@@ -1468,9 +1505,17 @@ function aiTimeline(l, n = 6) {
 }
 function aiMarketLine() {
   const m = market || {};
-  const nowMonth = new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  if (m.month && m.month.trim().toLowerCase() === nowMonth.toLowerCase())
-    return `Vancouver market (${m.month}): ${m.price} benchmark, ${m.dom} days avg DOM, ${m.ratio} sales ratio.`;
+  // stats come out a month behind, so this month or last month both count as current
+  const fmtM = d => d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toLowerCase();
+  const now = new Date(), prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const fresh = m.month && [fmtM(now), fmtM(prev)].includes(m.month.trim().toLowerCase());
+  const latest = (typeof marketStats !== 'undefined' && marketStats[0]) || null;
+  if (fresh) {
+    let line = `${m.area || 'Vancouver'} market (${m.month}): ${m.price || '?'} benchmark` +
+      (m.dom ? `, ${m.dom} days avg DOM` : '') + (m.ratio ? `, ${m.ratio} sales-to-active ratio` : '') + '.';
+    if (latest && latest.month === m.month && latest.data && latest.data.headline) line += ` Takeaway: ${latest.data.headline}`;
+    return line;
+  }
   return `Market numbers were last entered for ${m.month || 'an unknown month'}. They're out of date, so don't quote them.`;
 }
 function getCardUI(id) {
@@ -1528,7 +1573,7 @@ function switchTab(id, el) {
 }
 
 function switchToolsTab(id, btn) {
-  ['showings','calc','cheatsheet','notes','archive'].forEach(t => {
+  ['showings','calc','cheatsheet','notes','archive','stats'].forEach(t => {
     const panel = document.getElementById('tools-' + t + '-panel');
     const hbtn  = document.getElementById('thb-' + t);
     if (panel) panel.style.display = t === id ? '' : 'none';
@@ -1538,6 +1583,7 @@ function switchToolsTab(id, btn) {
   if (id === 'notes')      renderNotesTools();
   if (id === 'archive')    renderArchiveTools();
   if (id === 'cheatsheet') populateBuyerDropdownTools();
+  if (id === 'stats')      renderStats();
 }
 
 function switchAddTab(id, el) {
@@ -2687,6 +2733,184 @@ function syncAddFields() {
   }
 }
 
+/* ═══ MARKET STATS — AI reads the monthly stats package ═══ */
+let marketStats = load('ros_stats') || [];   // newest first: { id, month, area, fileName, readAt, data }
+let statsFile = null;                        // { name, media_type, data } or { name, text }
+let statsViewId = null;
+
+const fileToBase64 = f => new Promise((res, rej) => {
+  const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f);
+});
+function shrinkImage(f, maxSide = 2400) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = rej; img.src = url;
+  });
+}
+
+async function statsPickFile(e) {
+  const f = e.target.files?.[0]; if (!f) return;
+  const status = document.getElementById('st-status'), btn = document.getElementById('st-btn');
+  status.textContent = ''; statsFile = null; btn.disabled = true;
+  try {
+    const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+    const isImg = (f.type || '').startsWith('image/');
+    if (isPdf) {
+      if (f.size > 12 * 1024 * 1024) throw new Error('That PDF is over 12 MB. Try just the pages for your area.');
+      statsFile = { name: f.name, media_type: 'application/pdf', data: await fileToBase64(f) };
+    } else if (isImg) {
+      const ok = ['image/jpeg','image/png','image/webp','image/gif'].includes(f.type) && f.size < 3.5 * 1024 * 1024;
+      statsFile = ok ? { name: f.name, media_type: f.type, data: await fileToBase64(f) }
+                     : { name: f.name, media_type: 'image/jpeg', data: await shrinkImage(f) };
+    } else {
+      const txt = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(f); });
+      statsFile = { name: f.name, text: txt.slice(0, 60000) };
+    }
+    document.getElementById('st-file-name').textContent = '✓ ' + f.name;
+    btn.disabled = false;
+  } catch (err) { status.textContent = err.message || "Couldn't open that file."; }
+}
+
+const STAT_FIELDS = '"sales": number|null, "salesYoY": "e.g. -12.3%"|null, "newListings": number|null, "activeListings": number|null, "salesToActive": "e.g. 14.2%"|null, "benchmark": "e.g. $1,165,300"|null, "benchmarkYoY": "%"|null, "benchmarkMoM": "%"|null, "dom": number|null';
+
+function statsPrompt(area, prev) {
+  const data = statsFile.text ? 'The report data:\n<report>\n' + statsFile.text + '\n</report>\n' : 'The report is attached.\n';
+  const cmp = prev ? `For comparison, the last saved month (${prev.month}, ${prev.area}): ${JSON.stringify({ region: prev.data.region, focus: prev.data.focus })}\n` : '';
+  return `You are reading a monthly real estate statistics report for Chris Zenone, a Vancouver realtor at Oakwyn Realty. His focus area is "${area}".
+${data}${cmp}
+Reply with ONLY a JSON object, no other text:
+{
+ "found": true or false (false if you cannot see a market statistics report),
+ "month": "Mon YYYY: the month the stats cover, e.g. Aug 2026",
+ "source": "who published it",
+ "region": {"name": "the overall region, e.g. Greater Vancouver", ${STAT_FIELDS}},
+ "focus": {"name": "the closest match to ${area} in the report, or null if it has no area breakdown", ${STAT_FIELDS}},
+ "byType": [{"type": "Detached|Townhouse|Apartment", "area": "which area these numbers are for", "benchmark": "$"|null, "yoy": "%"|null, "mom": "%"|null, "sales": number|null}],
+ "headline": "one plain-English sentence: what changed this month and why it matters",
+ "marketType": "buyer's" | "balanced" | "seller's",
+ "talkingPoints": ["3-4 short points Chris can say to clients: what this means for buyers, for sellers, and for his area"],
+ "clientText": "a text message to a past client or lead, max 3 sentences, one real number, ends with an easy question",
+ "instagram": "an Instagram caption: hook line, 2-3 short lines with real numbers, a soft call to action, then 4-6 local hashtags",
+ "email": "a short newsletter paragraph, 4-6 sentences"
+}
+RULES:
+- Use ONLY numbers printed in the report. Never estimate or calculate a number that isn't there; use null instead.
+- byType: prefer the focus area's numbers; fall back to the overall region if the report has no area split.
+- marketType: sales-to-active ratio under 12% = buyer's, 12-20% = balanced, over 20% = seller's (use the focus area if available).
+- Voice: Chris is direct, warm, and real. No hype. Never use "excited", "amazing", "hot market", "don't miss out", "touching base".
+- Write for people in ${area}, not a generic audience. Say "benchmark price", not "average price", when quoting benchmarks.`;
+}
+
+async function readStats() {
+  if (!statsFile) return;
+  const status = document.getElementById('st-status'), btn = document.getElementById('st-btn');
+  const area = document.getElementById('st-area').value.trim() || 'Vancouver East';
+  status.textContent = ''; btn.disabled = true; btn.textContent = 'Reading… (up to a minute)';
+  try {
+    const files = statsFile.data ? [{ media_type: statsFile.media_type, data: statsFile.data }] : [];
+    const text = await callAI(statsPrompt(area, marketStats[0]), 3000, files);
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('bad reply');
+    const d = JSON.parse(m[0]);
+    if (!d.found) throw new Error(statsFile.data
+      ? "The AI couldn't see a stats report in that file. If this keeps happening, the AI function in Supabase needs the update I sent."
+      : "That file didn't look like a stats report.");
+    const rec = { id: makeId(), month: d.month || '', area: (d.focus && d.focus.name) || (d.region && d.region.name) || area,
+                  fileName: statsFile.name, readAt: new Date().toISOString(), data: d };
+    marketStats = [rec, ...marketStats.filter(r => !(r.month === rec.month && r.area === rec.area))].slice(0, 24);
+    save('ros_stats', marketStats);
+
+    // keep the Today market bar current
+    const src = (d.focus && d.focus.benchmark) ? d.focus : (d.region || {});
+    market = { ...market, month: d.month || market.month, area: rec.area,
+      price: src.benchmark || market.price, ratio: src.salesToActive || market.ratio,
+      dom: src.dom != null ? String(src.dom) : '',
+      listings: src.newListings != null ? Number(src.newListings).toLocaleString() : (market.listings || '') };
+    save(KEYS.market, market); renderMarket(); renderDailyFocus();
+    localStorage.removeItem('ros_briefing_date'); // next briefing uses the new numbers
+
+    statsViewId = rec.id; renderStats();
+    statsFile = null; document.getElementById('st-file').value = '';
+    document.getElementById('st-file-name').textContent = "Upload this month's stats";
+    toast(`${rec.month} stats saved ✓`);
+    document.getElementById('st-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    console.error(e);
+    status.textContent = /Sign in|AI function|stats report/.test(e.message) ? e.message
+      : /Not signed in|secret|HTTP|fetch|Failed|credit|key/i.test(e.message) ? 'AI error: ' + e.message
+      : "Couldn't read that file. Try again, or try a screenshot of the page for your area.";
+  } finally {
+    btn.textContent = '✦ Read stats & write my update';
+    btn.disabled = !statsFile;
+  }
+}
+
+function stDelta(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim(), neg = /^[-−]/.test(s);
+  const shown = (/%$/.test(s) ? s : s + '%').replace(/^[-−+]/, '');
+  return `<span class="${neg ? 'st-down' : 'st-up'}">${neg ? '▼' : '▲'} ${esc(shown)}</span>`;
+}
+function stTile(value, label, delta, note) {
+  const sub = (delta ? stDelta(delta) + ' vs last year' : '') + (note ? esc(note) : '');
+  return `<div class="st-tile"><div class="v">${esc(value ?? '—')}</div><div class="l">${label}</div>${sub ? `<div class="d">${sub}</div>` : ''}</div>`;
+}
+function stCopy(title, id, text) {
+  if (!text) return '';
+  return `<div class="st-copy"><div class="st-copy-h"><span>${title}</span><button onclick="copyText('${id}',this)">Copy</button></div><div class="st-copy-t" id="${id}">${esc(text)}</div></div>`;
+}
+
+function renderStats() {
+  const out = document.getElementById('st-result'), hist = document.getElementById('st-history');
+  if (!out) return;
+  const rec = marketStats.find(r => r.id === statsViewId) || marketStats[0];
+  if (!rec) { out.innerHTML = ''; hist.innerHTML = ''; return; }
+  const d = rec.data || {}, f = (d.focus && d.focus.name) ? d.focus : null, r = d.region || {};
+  const main = f || r;
+  const types = (d.byType || []).filter(t => t && (t.benchmark || t.sales != null));
+  const prior = marketStats[marketStats.indexOf(rec) + 1];
+  let vsPrior = '';
+  if (prior && prior.data) {
+    const pm = (prior.data.focus && prior.data.focus.name ? prior.data.focus : prior.data.region) || {};
+    const num = v => parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+    const a = num(main.salesToActive), b = num(pm.salesToActive);
+    if (!isNaN(a) && !isNaN(b)) vsPrior = `${a > b ? 'Up' : a < b ? 'Down' : 'Flat'} from ${pm.salesToActive} in ${prior.month}`;
+  }
+  const n = v => v != null && v !== '' ? Number(v).toLocaleString() : null;
+  out.innerHTML = `
+  <div class="calc-card" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div><div style="font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--gold);line-height:1.1">${esc(rec.month)}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${esc(main.name || rec.area)}</div></div>
+      ${d.marketType ? `<span class="st-chip">${esc(d.marketType)} market</span>` : ''}
+    </div>
+    ${d.headline ? `<div style="font-size:13px;line-height:1.55;color:var(--text);margin-top:12px">${esc(d.headline)}</div>` : ''}
+    <div class="st-tiles">
+      ${stTile(main.benchmark, 'Benchmark price', main.benchmarkYoY)}
+      ${stTile(main.salesToActive, 'Sales-to-active', null, vsPrior)}
+      ${stTile(n(main.sales), 'Sales', main.salesYoY)}
+      ${stTile(n(main.activeListings), 'Active listings')}
+    </div>
+    ${f && r.name ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${esc(r.name)}: ${esc(r.benchmark || '—')} benchmark${r.benchmarkYoY ? ' (' + stDelta(r.benchmarkYoY) + ' yr)' : ''} · ${esc(r.salesToActive || '—')} sales-to-active</div>` : ''}
+    ${types.length ? `<table class="st-table"><thead><tr><th>${esc(types[0].area || 'By type')}</th><th>Benchmark</th><th>Year</th><th>Month</th></tr></thead><tbody>
+      ${types.map(t => `<tr><td>${esc(t.type)}</td><td>${esc(t.benchmark || '—')}</td><td>${stDelta(t.yoy) || '—'}</td><td>${stDelta(t.mom) || '—'}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${(d.talkingPoints || []).length ? `<div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);margin:4px 0 6px">What to tell people</div>
+      <ul style="margin:0 0 4px 16px;padding:0;font-size:12px;line-height:1.6;color:var(--text-dim)">${d.talkingPoints.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+  </div>
+  ${stCopy('💬 Client text', 'st-text', d.clientText)}
+  ${stCopy('📸 Instagram caption', 'st-ig', d.instagram)}
+  ${stCopy('✉ Email / newsletter', 'st-email', d.email)}
+  <div style="font-size:10px;color:var(--muted);line-height:1.5;margin:4px 0 16px">Read from ${esc(rec.fileName || 'your file')}${d.source ? ' · ' + esc(d.source) : ''}. Spot-check the numbers against the report before you send anything to clients.</div>`;
+  hist.innerHTML = marketStats.length > 1 ? `<div class="sh" style="margin:6px 0 8px">Past months</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${marketStats.map(x => `<button class="tools-hub-btn ${x === rec ? 'on' : ''}" style="padding:6px 10px" onclick="statsViewId=${x.id};renderStats()">${esc(x.month)}${x.area ? ' · ' + esc(x.area) : ''}</button>`).join('')}</div>` : '';
+}
+
 /* ═══ SMART ADD — AI turns a messy note into a lead ═══ */
 let smartDraft = null;
 
@@ -3053,8 +3277,9 @@ function renderDailyFocus() {
   // ── MARKET BAR ──
   const mkt = market;
   const mktBar = `<div class="mkt-bar">
+    <button class="mkt-pill" style="cursor:pointer" onclick="openStatsTab()">📅 <strong>${esc(mkt.month||'—')}</strong>${mkt.area ? ' ' + esc(mkt.area) : ''}${/out of date/.test(aiMarketLine()) ? ' · <span style="color:var(--hot)">update ↗</span>' : ''}</button>
     <span class="mkt-pill">📈 <strong>${mkt.price||'—'}</strong> benchmark</span>
-    <span class="mkt-pill">⏱ <strong>${mkt.dom||'—'}d</strong> avg DOM</span>
+    ${mkt.dom ? `<span class="mkt-pill">⏱ <strong>${mkt.dom}d</strong> avg DOM</span>` : ''}
     <span class="mkt-pill">📋 <strong>${mkt.listings||'—'}</strong> new listings</span>
     <span class="mkt-pill">📊 <strong>${mkt.ratio||'—'}</strong> sales ratio</span>
     <button class="mkt-pill" style="cursor:pointer;background:none;border-style:dashed" onclick="toggleTodayMarketEdit()">✏ Edit</button>
@@ -3341,6 +3566,11 @@ function focusPastTap(key, pcId, el) {
   document.getElementById('contact-log-modal').classList.add('open');
 }
 
+function openStatsTab() {
+  const tab = [...document.querySelectorAll('.tab')].find(b => (b.getAttribute('onclick') || '').includes("switchTab('tools'"));
+  if (tab) switchTab('tools', tab);
+  switchToolsTab('stats', document.getElementById('thb-stats'));
+}
 function toggleTodayMarketEdit() {
   const el = document.getElementById('today-market-edit');
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -3457,9 +3687,10 @@ function swipeEnd(e, el, key, leadId) {
   }
 }
 function renderMarket() {
-  const m = market;
-  document.getElementById('mw-month').textContent = m.month||'Mar 2026';
-  document.getElementById('mw-stats').innerHTML = `
+  // the old standalone market widget; the Today screen's market bar is drawn by renderDailyFocus
+  const m = market, monthEl = document.getElementById('mw-month'), statsEl = document.getElementById('mw-stats');
+  if (monthEl) monthEl.textContent = (m.month || '—') + (m.area ? ' · ' + m.area : '');
+  if (statsEl) statsEl.innerHTML = `
     <div class="mw-stat"><div class="mw-stat-val">${m.price||'-'}</div><div class="mw-stat-label">Benchmark</div></div>
     <div class="mw-stat"><div class="mw-stat-val">${m.dom||'-'} days</div><div class="mw-stat-label">Avg DOM</div></div>
     <div class="mw-stat"><div class="mw-stat-val">${m.listings||'-'}</div><div class="mw-stat-label">New Listings</div></div>
@@ -3467,8 +3698,10 @@ function renderMarket() {
 }
 function toggleMarketEdit() { document.getElementById('mw-edit-form').classList.toggle('open'); }
 function saveMarket() {
-  market = { price:document.getElementById('mw-price').value.trim(), dom:document.getElementById('mw-dom').value.trim(), listings:document.getElementById('mw-listings').value.trim(), ratio:document.getElementById('mw-ratio').value.trim(), month:document.getElementById('mw-monthval').value.trim() };
-  save(KEYS.market, market); document.getElementById('mw-edit-form').classList.remove('open'); renderMarket(); toast('Market data saved ✓');
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  market = { ...market, price:v('mw-price'), dom:v('mw-dom'), listings:v('mw-listings'), ratio:v('mw-ratio'), month:v('mw-monthval') };
+  save(KEYS.market, market); document.getElementById('mw-edit-form')?.classList.remove('open');
+  renderMarket(); renderDailyFocus(); toast('Market data saved ✓');
 }
 
 /* ═══ PIPELINE ═══ */
