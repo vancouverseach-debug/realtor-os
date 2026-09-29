@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-09-29.3">
+<meta name="ros-build" content="2026-09-29.5">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1084,7 +1084,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- supabase-js is loaded after first paint by ROS.start() -->
 <script>
 /* ═══ CLOUD SYNC (Supabase) ═══
    Every save() still writes to this device first, so the app stays instant and
@@ -1099,8 +1099,18 @@ const ROS = (() => {
   const JOINED  = 'ros_sync_user';      // user id this device has synced with
   const LAST    = 'ros_sync_last';
 
+  const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
   let sb = null;
-  try { if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch (e) { console.error(e); }
+  function loadSupabase() {
+    return new Promise(resolve => {
+      if (window.supabase) return resolve();
+      const t = document.createElement('script');
+      t.src = SUPABASE_JS; t.async = true;
+      t.onload = t.onerror = () => resolve();
+      setTimeout(resolve, 8000); // no signal: carry on offline
+      document.head.appendChild(t);
+    });
+  }
 
   let user = null, enabled = false, syncing = false, pushTimer = null, status = 'off';
   let readyResolve; const ready = new Promise(r => { readyResolve = r; });
@@ -1168,13 +1178,23 @@ const ROS = (() => {
     return changed;
   }
 
-  function reloadApp() {
-    const log = readJSON('ros_sync_reloads', []).filter(t => Date.now() - t < 60000);
+  /* Another device changed something: reload the in-memory data and redraw, no page reload. */
+  let applyPending = false;
+  function applyCloudChanges() {
     const busy = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
-    if (log.length >= 3 || busy) { toast('Updated from your other device — reopen to see it'); return; }
-    log.push(Date.now());
-    localStorage.setItem('ros_sync_reloads', JSON.stringify(log));
-    location.reload();
+    if (busy) { // don't wipe what you're typing; apply when you leave the field
+      if (!applyPending) { applyPending = true; document.addEventListener('focusout', () => { applyPending = false; setTimeout(applyCloudChanges, 50); }, { once: true }); }
+      return;
+    }
+    try {
+      leads = load(KEYS.leads) || []; pastClients = load(KEYS.past) || [];
+      market = load(KEYS.market) || market; focusDone = load(KEYS.focusDone) || {};
+      showings = load(KEYS.showings) || []; notes = load('ros_notes') || [];
+      ['renderLeads','renderDailyFocus','renderPipeline','renderPastClients','renderNotes','renderShowings',
+       'renderMarket','renderShowingsTools','renderNotesTools','renderArchiveTools'].forEach(f => {
+        try { if (typeof window[f] === 'function') window[f](); } catch (e) { console.error(f, e); }
+      });
+    } catch (e) { console.error(e); location.reload(); }
   }
 
   async function sync() {
@@ -1185,7 +1205,7 @@ const ROS = (() => {
       const changed = merge(rows);
       const ok = await push();
       if (ok) { localStorage.setItem(LAST, String(Date.now())); setStatus(Object.keys(getPending()).length ? 'pending' : 'ok'); }
-      if (changed) reloadApp();
+      if (changed) applyCloudChanges();
     } catch (e) {
       console.error('Sync failed:', e); setStatus('error');
     } finally { syncing = false; }
@@ -1216,6 +1236,8 @@ const ROS = (() => {
   }
 
   async function start() {
+    await loadSupabase();
+    try { if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch (e) { console.error(e); }
     if (!sb) { setStatus('off'); readyResolve(false); return; } // offline or CDN blocked: app runs locally
     sb.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') { enabled = false; user = null; setStatus('off'); }
@@ -1260,7 +1282,7 @@ const ROS = (() => {
     }
     localStorage.setItem(LAST, String(Date.now()));
     setStatus('ok');
-    if (changed) reloadApp();
+    if (changed) applyCloudChanges();
   }
 
   /* Summarize a data set for the side-by-side choice. */
@@ -1415,6 +1437,42 @@ let activeFilter = 'all';
 let activeTpl   = null;
 
 function getTodayStr() { return new Date().toDateString(); }
+
+/* ═══ DATES — everything in local calendar days (Vancouver), never UTC ═══ */
+function todayISO(d = new Date()) { return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function parseDay(v) {
+  if (!v) return null;
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const d = new Date(v); if (isNaN(d)) return null;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function daysSince(v) { const d = parseDay(v); return d ? Math.round((parseDay(todayISO()) - d) / 86400000) : null; }
+function agoText(v) {
+  const d = daysSince(v);
+  if (d === null) return 'date unknown';
+  if (d === 0) return 'today'; if (d === 1) return 'yesterday'; if (d === -1) return 'tomorrow';
+  return d < 0 ? `in ${-d} days` : `${d} days ago`;
+}
+/* Most recent real touch: the saved contact date or the newest activity entry, whichever is later. */
+function lastTouchDate(l) {
+  let best = l.lastContactDate ? String(l.lastContactDate).slice(0,10) : null;
+  (l.activityLog || []).forEach(e => { if (e?.date) { const d = todayISO(new Date(e.date)); if (!isNaN(new Date(e.date)) && (!best || d > best)) best = d; } });
+  return best;
+}
+/* Dated activity history for AI prompts, so old notes read as old. */
+function aiTimeline(l, n = 6) {
+  const rows = (l.activityLog || []).filter(e => e && e.note).slice(-n)
+    .map(e => `  [${fmtDateShort(e.date)} · ${agoText(e.date)}] ${e.note}`);
+  return rows.length ? rows.join('\n') : '  (nothing logged)';
+}
+function aiMarketLine() {
+  const m = market || {};
+  const nowMonth = new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  if (m.month && m.month.trim().toLowerCase() === nowMonth.toLowerCase())
+    return `Vancouver market (${m.month}): ${m.price} benchmark, ${m.dom} days avg DOM, ${m.ratio} sales ratio.`;
+  return `Market numbers were last entered for ${m.month || 'an unknown month'}. They're out of date, so don't quote them.`;
+}
 function getCardUI(id) {
   if (!cardUI[id]) cardUI[id] = { open:false, channel:'text', tone:'warm', moreOpen:false, editing:false };
   return cardUI[id];
@@ -1492,10 +1550,9 @@ function switchAddTab(id, el) {
 /* ═══ URGENCY ═══ */
 function fmtLastContactFromDate(iso) {
   if (!iso) return 'Never';
-  const d = new Date(iso);
-  const now = new Date();
-  const days = Math.floor((now - d) / 86400000);
-  if (days === 0) return 'Today';
+  const days = daysSince(iso);
+  if (days === null) return 'Never';
+  if (days <= 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days <= 3)  return '2–3 days ago';
   if (days <= 7)  return 'Last week';
@@ -1505,9 +1562,8 @@ function fmtLastContactFromDate(iso) {
 }
 
 function urgencyDays(l) {
-  if (l.lastContactDate) {
-    return Math.floor((new Date() - new Date(l.lastContactDate)) / 86400000);
-  }
+  const touched = lastTouchDate(l);
+  if (touched) return Math.max(0, daysSince(touched));
   const URGENCY_MAP = { 'Today':0,'Yesterday':1,'2-3 days ago':2,'2–3 days ago':2,'Last week':5,'2 weeks ago':10,'1 month ago':20,'2+ months ago':40,'Never':60 };
   return URGENCY_MAP[l.lastContact] ?? 7;
 }
@@ -1522,7 +1578,7 @@ function getUrgencyState(l) {
   if (l.stage === 'Closed' || l.stage === 'Completed') return 'hidden';
   if (l.snoozeUntil && new Date(l.snoozeUntil) > new Date()) return 'snoozed';
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
   const priority = l.priority || (l.type === 'hot' ? 'hot' : l.type === 'cold' ? 'cold' : 'warm');
   const days = urgencyDays(l);
 
@@ -1537,11 +1593,11 @@ function getUrgencyState(l) {
   // UPCOMING — scheduled action in 1-3 days
   const upcomingTask = (l.tasks||[]).find(t => !t.done && t.date > today);
   if (upcomingTask) {
-    const daysUntil = Math.floor((new Date(upcomingTask.date) - new Date()) / 86400000);
+    const daysUntil = -daysSince(upcomingTask.date);
     if (daysUntil <= 3) return 'upcoming';
   }
   if (l.followUpDate && l.followUpDate > today) {
-    const daysUntil = Math.floor((new Date(l.followUpDate) - new Date()) / 86400000);
+    const daysUntil = -daysSince(l.followUpDate);
     if (daysUntil <= 3) return 'upcoming';
   }
 
@@ -1671,11 +1727,14 @@ function renderLeadCard(l) {
   const tc = typeColors[leadType] || typeColors.buyer;
   const pc = priorityColors[priority] || priorityColors.warm;
 
+  // Card insides are only built when the card is open; closed cards are just the header.
+  let actTab = '', infoTab = '', logTab = '';
+  if (ui.open) {
   const log = (l.activityLog || []).slice().reverse();
   const sources = ['Open House','Referral','Sphere','Instagram','Reach CRM','Other'];
 
   // ACT TAB — 6 core actions, instant log
-  const actTab = `
+  actTab = `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
       ${l.phone
         ? `<a href="tel:${l.phone}" class="lq-btn primary" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:5px">📱 Call</a>`
@@ -1771,7 +1830,7 @@ function renderLeadCard(l) {
     </div>`;
 
   // INFO TAB — separate type and priority
-  const infoTab = `
+  infoTab = `
     <div style="margin-bottom:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
         <div>
@@ -1884,7 +1943,7 @@ function renderLeadCard(l) {
       </div>`
     : `<div style="font-size:11px;color:var(--muted);padding:8px 0 12px">No activity yet — tap an action above to log</div>`;
 
-  const logTab = `
+  logTab = `
     <div class="more-section">
       <div class="more-section-title">Timeline</div>
       ${timelineHTML}
@@ -1932,6 +1991,7 @@ function renderLeadCard(l) {
         ${snoozeActive?`<button class="snooze-btn active" onclick="unsnooze(${l.id})">😴 Cancel</button>`:''}
       </div>
     </div>`;
+  }
 
   return `
 <div class="lead-card ${leadType}" id="lc-${l.id}" style="border-left-color:${tc.border}">
@@ -1953,7 +2013,7 @@ function renderLeadCard(l) {
     </div>
     <div class="lc-pills">${urgencyPill(l)}</div>
   </div>
-  <div class="lc-body" id="lc-body-${l.id}">
+  <div class="lc-body" id="lc-body-${l.id}">${ui.open ? `
     <!-- TAB BAR -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--border);margin-bottom:12px">
       <button class="card-tab ${activeTab==='act'?'on':''}" onclick="switchCardTab(${l.id},'act',this)">⚡ Act</button>
@@ -1962,7 +2022,7 @@ function renderLeadCard(l) {
     </div>
     <div id="card-tab-act-${l.id}"  style="display:${activeTab==='act' ?'block':'none'}">${actTab}</div>
     <div id="card-tab-info-${l.id}" style="display:${activeTab==='info'?'block':'none'}">${infoTab}</div>
-    <div id="card-tab-log-${l.id}"  style="display:${activeTab==='log' ?'block':'none'}">${logTab}</div>
+    <div id="card-tab-log-${l.id}"  style="display:${activeTab==='log' ?'block':'none'}">${logTab}</div>` : ''}
   </div>
 </div>`;}
 
@@ -1983,6 +2043,11 @@ function toggleCard(id) {
     });
   }
   ui.open = opening;
+  if (opening) {
+    // build this card's insides on demand
+    const lead = leads.find(x => x.id === id), card = document.getElementById('lc-'+id);
+    if (lead && card) card.outerHTML = renderLeadCard(lead);
+  }
   document.getElementById('lc-body-'+id)?.classList.toggle('open', ui.open);
   if (!ui.open) {
     ui.moreOpen = false;
@@ -2040,7 +2105,7 @@ function commitInstantLog(skipNote) {
   if (!lead.activityLog) lead.activityLog = [];
   lead.activityLog.push({ date: new Date().toISOString(), note: entry, type: _ilog_action });
   lead.lastContact = 'Today';
-  lead.lastContactDate = new Date().toISOString().slice(0,10);
+  lead.lastContactDate = todayISO();
   autoCompleteFollowUp(lead);
   dedupeRecentLog(lead);
   saveLeads();
@@ -2075,7 +2140,7 @@ function commitInstantLog(skipNote) {
 /* ═══ AUTO-COMPLETE FOLLOW-UP ═══ */
 function autoCompleteFollowUp(lead) {
   if (!lead) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
   // complete any overdue or today tasks
   if (lead.tasks) {
     lead.tasks.forEach(t => {
@@ -2111,7 +2176,7 @@ function quickLog(id, action) {
   const entry = note ? `${action} — ${note}` : action;
   lead.activityLog.push({ date: new Date().toISOString(), note: entry, type: action });
   lead.lastContact = 'Today';
-  lead.lastContactDate = new Date().toISOString().slice(0,10);
+  lead.lastContactDate = todayISO();
   autoCompleteFollowUp(lead);
   const noteInput = document.getElementById('qlog-note-'+id);
   if (noteInput) noteInput.value = '';
@@ -2432,6 +2497,7 @@ function addActivityLog(id) {
   if (!lead.activityLog) lead.activityLog = [];
   lead.activityLog.push({ date: new Date().toISOString(), note });
   lead.lastContact = 'Today';
+  lead.lastContactDate = todayISO();
   saveLeads(); input.value = ''; renderLeads(); toast('Note logged');
 }
 
@@ -2525,7 +2591,7 @@ function markAsSent(id) {
     type: '💬 Texted'
   });
   lead.lastContact = 'Today';
-  lead.lastContactDate = new Date().toISOString().slice(0,10);
+  lead.lastContactDate = todayISO();
   saveLeads(); renderLeads();
   toast('Marked as sent ✓');
 }
@@ -2537,7 +2603,7 @@ function markAsSentWithFollowup(id) {
   // set follow-up for 48 hours from now
   const followUp = new Date();
   followUp.setDate(followUp.getDate() + 2);
-  const dateStr = followUp.toISOString().slice(0,10);
+  const dateStr = todayISO(followUp);
   if (!lead.tasks) lead.tasks = [];
   lead.tasks.push({
     id: makeId().toString(),
@@ -2559,6 +2625,7 @@ function markContacted(id) {
     (Date.now() - new Date(lastEntry.date).getTime()) < 60000;
   if (tooSoon) { toast('Already logged'); return; }
   lead.lastContact = 'Today';
+  lead.lastContactDate = todayISO();
   if (!lead.activityLog) lead.activityLog = [];
   lead.activityLog.push({ date: new Date().toISOString(), note: 'Marked contacted' });
   saveLeads(); renderLeads(); toast('Marked as contacted ✓');
@@ -2729,7 +2796,7 @@ function saveFullLead() {
     notes:document.getElementById('f-notes').value.trim(),
     followUpDate:document.getElementById('f-followup').value || null,
     priority:smartDraft?.priority || undefined,
-    lastContactDate:new Date().toISOString().slice(0,10),
+    lastContactDate:todayISO(),
     activityLog: smartDraft ? [{ date:new Date().toISOString(), note:'Captured: ' + smartDraft.raw }] : [], tags:[] });
   saveLeads(); renderLeads(); closeModal('modal-bg');
   ['f-fname','f-lname','f-phone','f-email','f-criteria','f-budget','f-notes','f-followup','s-raw'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
@@ -2757,19 +2824,16 @@ async function generateFollowUp(id) {
     breakup: 'soft breakup — no pressure, leave the door open, make it easy to reply',
     value:   'value-add — lead with a useful insight, listing, or market update'
   };
-  const daysSince = lead.lastContactDate
-    ? Math.floor((new Date() - new Date(lead.lastContactDate)) / 86400000)
-    : null;
-  const contactContext = daysSince !== null
-    ? `${daysSince} days ago`
-    : lead.lastContact || 'Unknown';
-  const recentLog = (lead.activityLog||[]).slice(-5).map(e=>e.note).join(' → ');
+  const touched = lastTouchDate(lead);
+  const contactContext = touched ? `${fmtDateShort(touched)} (${agoText(touched)})` : 'never logged';
+  const todayStr = new Date().toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const mkt = market;
   const firstName = lead.firstName || lead.name.split(' ')[0];
   const lt = lead.leadType || lead.type;
   const pr = lead.priority || (lead.type==='hot'?'hot':'warm');
 
   const prompt = `You are writing a real message for Chris Zenone, a Vancouver realtor at Oakwyn Realty. Chris is direct, warm, and real — not salesy.
+TODAY is ${todayStr}.
 
 LEAD PROFILE:
 - Name: ${firstName} ${lead.lastName||''}
@@ -2781,12 +2845,14 @@ LEAD PROFILE:
 - Motivation: ${lead.motivation||'Unknown'}
 - Pre-approved: ${lead.preApproved||'Unknown'}
 - Last contacted: ${contactContext}
-- Recent activity: ${recentLog||'None'}
-- Background: ${lead.notes||'None'}
-- Last conversation: ${lead.lastConv||'None'}
+- Follow-up date: ${lead.followUpDate ? `${fmtDateShort(lead.followUpDate)} (${agoText(lead.followUpDate)})` : 'none set'}
+- Activity log, oldest to newest:
+${aiTimeline(lead)}
+- Background notes (undated, may be old): ${lead.notes||'None'}
+- Last conversation note (undated, may be old): ${lead.lastConv||'None'}
 ${ctx?`- Additional context from Chris: ${ctx}`:''}
 
-MARKET (${mkt.month}): ${mkt.price} benchmark, ${mkt.dom} days avg DOM, ${mkt.ratio} sales ratio.
+MARKET: ${aiMarketLine()}
 
 WRITE: A ${channelLabel} — tone: ${toneMap[ui.tone]}
 
@@ -2798,16 +2864,18 @@ STRICT RULES:
 - First person as Chris, sign off "— Chris"
 - ONLY reference things confirmed in the lead profile above
 - Do NOT invent details, appointments, or context not listed
+- Every log entry is dated. Words like "tomorrow", "Friday" or "next week" inside a note are relative to THAT note's date, not today. A note from weeks ago is old news: don't write as if it just happened
+- If it's been a long time since contact, acknowledge the gap naturally instead of pretending you spoke recently
 - Do NOT use phrases like "I hope this finds you well", "touching base", "just checking in", "excited", "amazing"
 - Sound like a real person texting, not a CRM
 
 GOOD TEXT EXAMPLES:
-"Hey Raymond, found a detached on Lakewood that just hit the market — checks most of your boxes. Want me to get you in this week? — Chris"
-"Hey Quan, still thinking about spring timing? Would love to pull comps and talk strategy before inventory picks up. — Chris"
+"Hey Sam, found a detached on Lakewood that just hit the market — checks most of your boxes. Want me to get you in this week? — Chris"
+"Hey Priya, still thinking about timing on a sale? Happy to pull comps on your street so you know where you stand. — Chris"
 "Hey Luena, a 1-bed just came up near UBC under $500K — want the details? — Chris"
 
 BAD (never write like this):
-"Hey Raymond! I'm so excited to help you find your dream home! I've been keeping an eye on the market and there are some amazing opportunities!"
+"Hey Sam! I'm so excited to help you find your dream home! I've been keeping an eye on the market and there are some amazing opportunities!"
 
 Output only the message. No explanation, no quotes around it.`;
   try {
@@ -2827,7 +2895,7 @@ Output only the message. No explanation, no quotes around it.`;
 /* ═══ TODAY DECISION ENGINE ═══ */
 function renderDailyFocus() {
   const wrap = document.getElementById('today-wrap');
-  const TODAY     = new Date().toISOString().slice(0,10);
+  const TODAY     = todayISO();
   const todayStr  = getTodayStr();
   const now       = new Date();
 
@@ -2850,7 +2918,7 @@ function renderDailyFocus() {
 
   const subjectsCountdown = l => {
     if (l.stage !== 'Subjects' || !l.followUpDate) return null;
-    const diff = Math.round((new Date(l.followUpDate) - now) / 86400000);
+    const diff = -daysSince(l.followUpDate);
     if (diff < 0)  return 'Subjects PAST DUE';
     if (diff === 0) return 'Subjects due TODAY';
     return `Subjects — ${diff}d left`;
@@ -2924,7 +2992,7 @@ function renderDailyFocus() {
     if (actNowIds.has(l.id)) return false;
     if (l.type === 'cold') return false;
     if (l.followUpDate) {
-      const diff = Math.round((new Date(l.followUpDate) - now) / 86400000);
+      const diff = -daysSince(l.followUpDate);
       return diff > 0 && diff <= 3;
     }
     return getUrgencyState(l) === 'upcoming' || getUrgencyState(l) === 'checkin';
@@ -3133,7 +3201,7 @@ function renderDailyFocus() {
 
   // ── STAT BAR ──
   const allActive = leads.filter(l => l.type !== 'archived' && l.stage !== 'Closed' && l.stage !== 'Completed');
-  const overdueBar = allActive.filter(l => l.followUpDate && l.followUpDate < new Date().toISOString().slice(0,10)).length;
+  const overdueBar = allActive.filter(l => l.followUpDate && l.followUpDate < todayISO()).length;
   const inMotionBar = allActive.filter(l => ACTIVE_DEAL_STAGES.includes(l.stage)).length;
   document.getElementById('today-stat-bar').innerHTML = `
     <div class="stat-bar-col"><span class="stat-bar-num">${allActive.length}</span><span class="stat-bar-lbl">Active</span></div>
@@ -3212,7 +3280,7 @@ function tdayCommitLog(skipNote) {
     if (!lead.activityLog) lead.activityLog = [];
     lead.activityLog.push({ date: new Date().toISOString(), note: entry, type: clm_action });
     lead.lastContact = 'Today';
-    lead.lastContactDate = new Date().toISOString().slice(0,10);
+    lead.lastContactDate = todayISO();
     autoCompleteFollowUp(lead);
     dedupeRecentLog(lead);
     saveLeads();
@@ -3297,7 +3365,7 @@ async function autoGenerateBriefing(force = false) {
 
   const active = leads.filter(l => l.type !== 'archived');
   const urgent = active.filter(l => ['now','upcoming','checkin'].includes(getUrgencyState(l))).slice(0, 6);
-  const todayShowings = showings.filter(s => s.date === new Date().toISOString().slice(0,10) && !s.done);
+  const todayShowings = showings.filter(s => s.date === todayISO() && !s.done);
   const mkt = market;
   const dayStr = new Date().toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
 
@@ -3305,18 +3373,19 @@ async function autoGenerateBriefing(force = false) {
 
 ACTIVE LEADS NEEDING ATTENTION:
 ${urgent.map(l => {
-  const days = l.lastContactDate ? Math.floor((new Date()-new Date(l.lastContactDate))/86400000) : null;
-  const lastTouchStr = days !== null ? `${days}d ago` : l.lastContact;
-  const recentAct = (l.activityLog||[]).slice(-2).map(e=>e.note).join(', ');
-  return `- ${l.firstName||l.name.split(' ')[0]} (${l.type}, ${l.stage||'New Lead'}): ${l.criteria||'TBD'} | Last touch: ${lastTouchStr}${recentAct?' | Recent: '+recentAct:''}`;
+  const touched = lastTouchDate(l);
+  const fu = l.followUpDate ? ` | Follow-up date: ${fmtDateShort(l.followUpDate)} (${agoText(l.followUpDate)})` : '';
+  const recent = (l.activityLog||[]).filter(e=>e&&e.note).slice(-2).map(e=>`[${fmtDateShort(e.date)}, ${agoText(e.date)}] ${e.note}`).join('; ');
+  return `- ${l.firstName||l.name.split(' ')[0]} (${l.type}, ${l.stage||'New Lead'}): ${l.criteria||'TBD'} | Last touch: ${touched ? agoText(touched) : 'never logged'}${fu}${recent?' | Latest notes: '+recent:''}`;
 }).join('\n')}
 
 ${todayShowings.length ? `TODAY'S SHOWINGS: ${todayShowings.map(s=>`${s.time||'?'} — ${s.address} with ${s.client||'?'}`).join(', ')}` : ''}
 
-Vancouver market (${mkt.month}): ${mkt.price} benchmark, ${mkt.dom} days DOM, ${mkt.ratio} sales ratio.
+${aiMarketLine()}
 
 Write 2-3 SHORT sentences. Use first names. Be specific — name the lead, name the action. No generic advice.
 Format: Most urgent action first → biggest opportunity → one sharp observation.
+Notes are dated: "tomorrow" or "Friday" inside a note means relative to that note's date, not today. Only call something due or overdue from its follow-up date. Old notes are old news.
 Do NOT use: "touching base", "checking in", "excited", "amazing", "hope you're well".`;
 
   try {
@@ -3462,7 +3531,7 @@ function renderPipeline() {
         <div style="font-size:10px;color:var(--gold-dim);margin-top:3px">→ ${nextAction(l)}</div>
       </div>
       <div class="pc-right" style="min-width:60px;text-align:right">
-        <div class="pc-days">${l.lastContact}</div>
+        <div class="pc-days">${fmtLastContactFromDate(lastTouchDate(l))}</div>
         ${urgBadge(l)}
       </div>
     </div>`;
@@ -3571,7 +3640,7 @@ function openShowingModal(type = 'showing') {
     o.textContent = `${l.name} (${l.type})`;
     sel.appendChild(o);
   });
-  document.getElementById('sm-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('sm-date').value = todayISO();
   document.getElementById('sm-type').value = type;
   const isOH = type === 'openhouse';
   const isAppt = type === 'appointment';
@@ -3615,7 +3684,7 @@ function saveShowing() {
 }
 function renderShowings() {
   const wrap = document.getElementById('showings-list');
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
   const sorted = [...showings].sort((a,b)=>a.date.localeCompare(b.date));
   if (!sorted.length) { wrap.innerHTML = '<div class="empty"><div class="ei">🗓</div><p>No schedule yet.<br>Add a showing or appointment.</p></div>'; return; }
   wrap.innerHTML = sorted.map(s => {
@@ -4068,7 +4137,7 @@ function exportCSV() {
   const blob = new Blob([csv], {type:'text/csv'});
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = `realtor-os-${new Date().toISOString().slice(0,10)}.csv`;
+  a.href = url; a.download = `realtor-os-${todayISO()}.csv`;
   a.click(); URL.revokeObjectURL(url); toast('Exported ✓');
 }
 function importCSV(e) {
@@ -4121,13 +4190,13 @@ function typewriterEffect(el, text, speed) {
   const iv = setInterval(() => { i+=4; el.textContent=text.slice(0,i); if(i>=text.length){clearInterval(iv);el.classList.remove('typing');el.textContent=text;} }, speed);
 }
 function fmtDate(iso) {
-  if (!iso) return ''; const d = new Date(iso);
+  if (!iso) return ''; const d = parseDay(iso) || new Date(iso);
   const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${mo[d.getMonth()]} ${d.getDate()}`;
 }
 function fmtDateShort(iso) {
   if (!iso) return '';
-  try { const d=new Date(iso); const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`; } catch { return iso; }
+  try { const d=parseDay(iso)||new Date(iso); const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`; } catch { return iso; }
 }
 
 /* ═══ DEFAULT DATA ═══ */
@@ -4169,7 +4238,7 @@ ROS.start();
 function renderShowingsTools() {
   const wrap = document.getElementById('tools-showings-list');
   if (!wrap) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
   const sorted = [...showings].sort((a,b)=>a.date.localeCompare(b.date));
   if (!sorted.length) { wrap.innerHTML = '<div class="empty"><div class="ei">🗓</div><p>No schedule yet.</p></div>'; return; }
   wrap.innerHTML = sorted.map(s => {
