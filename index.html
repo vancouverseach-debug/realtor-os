@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-09-29.8">
+<meta name="ros-build" content="2026-10-05.1">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -526,7 +526,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
 <!-- TODAY — DECISION ENGINE -->
 <div id="pg-focus" class="pg on">
   <div id="ptr-indicator" style="text-align:center;padding:0;height:0;overflow:hidden;transition:height .2s;font-size:11px;color:var(--muted)">↓ Pull to refresh</div>
-  <div id="today-stat-bar" style="display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border-bottom:1px solid var(--border);text-align:center;padding:10px 0"></div>
+  <div id="today-stat-bar" style="display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-bottom:1px solid var(--border);text-align:center;padding:10px 0"></div>
   <div class="today-wrap" id="today-wrap"></div>
 </div>
 
@@ -1619,6 +1619,11 @@ function urgencyDays(l) {
 // Last outbound action types — ball is in their court
 const OUTBOUND_ACTIONS = ['📞 Called','💬 Texted','📩 Voicemail','📤 Sent listings','📱 No answer'];
 const ACTIVE_DEAL_STAGES = ['Agreement Signed','Active Search','Listed','Listing Appointment','Offer Submitted','Offer Received','Subjects'];
+// Pipeline groups: money on the line vs. committed-but-no-deal-yet
+const LIVE_DEAL_STAGES = ['Listed','Offer Submitted','Offer Received','Subjects'];
+const WORKING_STAGES   = ['Listing Appointment','Agreement Signed','Active Search'];
+const leadPrio = l => l.priority || (l.type === 'hot' ? 'hot' : l.type === 'cold' ? 'cold' : 'warm');
+const isColdLead = l => leadPrio(l) === 'cold';
 
 function getUrgencyState(l) {
   // Hidden states
@@ -3747,10 +3752,12 @@ function renderDailyFocus() {
   // ── STAT BAR ──
   const allActive = leads.filter(l => l.type !== 'archived' && l.stage !== 'Closed' && l.stage !== 'Completed');
   const overdueBar = allActive.filter(l => l.followUpDate && l.followUpDate < todayISO()).length;
-  const inMotionBar = allActive.filter(l => ACTIVE_DEAL_STAGES.includes(l.stage)).length;
+  const inMotionBar = allActive.filter(l => !isColdLead(l) && LIVE_DEAL_STAGES.includes(l.stage)).length;
+  const workingBar  = allActive.filter(l => !isColdLead(l) && WORKING_STAGES.includes(l.stage)).length;
   document.getElementById('today-stat-bar').innerHTML = `
     <div class="stat-bar-col"><span class="stat-bar-num">${allActive.length}</span><span class="stat-bar-lbl">Active</span></div>
     <div class="stat-bar-col"><span class="stat-bar-num" style="color:var(--red)">${overdueBar}</span><span class="stat-bar-lbl">Overdue</span></div>
+    <div class="stat-bar-col"><span class="stat-bar-num" style="color:var(--gold)">${workingBar}</span><span class="stat-bar-lbl">Working</span></div>
     <div class="stat-bar-col"><span class="stat-bar-num" style="color:var(--green)">${inMotionBar}</span><span class="stat-bar-lbl">In Motion</span></div>
   `;
 }
@@ -4030,23 +4037,15 @@ function renderPipeline() {
   const active = leads.filter(l => l.type !== 'archived');
   if (!active.length) { wrap.innerHTML = '<div class="empty"><div class="ei">📊</div><p>No leads yet.</p></div>'; return; }
 
-  // DEALS IN MOTION = leads in active deal stages (not just recently contacted)
-  const dealStages = ['Agreement Signed','Active Search','Offer Submitted','Offer Received','Subjects','Listed','Listing Appointment'];
-  const actNow  = active.filter(l =>
-    dealStages.includes(l.stage) ||
-    (urgencyScore(l) <= 1 && l.type !== 'cold' && ['Agreement Signed','Active Search','Offer Submitted','Offer Received','Subjects','Listed'].includes(l.stage))
-    || l.stage === 'Subjects' || l.stage === 'Offer Submitted' || l.stage === 'Offer Received'
-  );
-  // fallback — if no deal stage leads, show urgency-based
-  const dealsInMotion = actNow.length > 0 ? actNow : active.filter(l => getUrgencyState(l) === 'now' && l.type !== 'cold');
-  const actNowIds = new Set(dealsInMotion.map(l => l.id));
-
+  // Cold always wins: a cold lead sits in Cold / Re-engage only, whatever its stage (stage is kept for when they wake up).
   const getLeadType = l => l.leadType || (l.type === 'seller' ? 'seller' : 'buyer');
-  const getLeadPrio = l => l.priority || (l.type === 'hot' ? 'hot' : l.type === 'cold' ? 'cold' : 'warm');
-
-  const buyers  = active.filter(l => getLeadType(l) === 'buyer' && !actNowIds.has(l.id));
-  const sellers = active.filter(l => getLeadType(l) === 'seller' && !actNowIds.has(l.id));
-  const cold    = active.filter(l => getLeadPrio(l) === 'cold' && !actNowIds.has(l.id));
+  const getLeadPrio = leadPrio;
+  const dealsInMotion = active.filter(l => !isColdLead(l) && LIVE_DEAL_STAGES.includes(l.stage));
+  const working       = active.filter(l => !isColdLead(l) && WORKING_STAGES.includes(l.stage));
+  const placed = new Set([...dealsInMotion, ...working].map(l => l.id));
+  const cold    = active.filter(l => isColdLead(l));
+  const buyers  = active.filter(l => !isColdLead(l) && !placed.has(l.id) && getLeadType(l) === 'buyer');
+  const sellers = active.filter(l => !isColdLead(l) && !placed.has(l.id) && getLeadType(l) === 'seller');
 
   // Next action hint based on stage + type
   const nextAction = l => {
@@ -4104,41 +4103,38 @@ function renderPipeline() {
 
   let html = '';
 
-  // 🔥 Deals in Motion — grouped by stage with counts
-  if (dealsInMotion.length) {
-    const id = 'hot';
-    html += sectionHeader(id, '🔥 Deals in Motion', 'var(--hot)', dealsInMotion.length);
-    // Group by stage
-    const stageOrder = ['Listing Appointment','Listed','Agreement Signed','Active Search','Offer Submitted','Offer Received','Subjects'];
-    const byStage = {};
-    dealsInMotion.forEach(l => {
-      const s = l.stage || 'Unknown';
-      if (!byStage[s]) byStage[s] = [];
-      byStage[s].push(l);
-    });
-    stageOrder.forEach(stage => {
-      if (!byStage[stage] || !byStage[stage].length) return;
-      html += `<div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);padding:8px 14px 4px;display:flex;align-items:center;gap:8px">
-        <span>${stage}</span>
-        <span style="background:var(--card2);color:var(--muted);font-size:9px;padding:1px 6px;border-radius:10px;border:1px solid var(--border)">${byStage[stage].length}</span>
+  const stageGroup = (list, order, labels) => {
+    const by = {}; list.forEach(l => { (by[l.stage] = by[l.stage] || []).push(l); });
+    return order.filter(st => by[st] && by[st].length).map(st => `
+      <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);padding:8px 14px 4px;display:flex;align-items:center;gap:8px">
+        <span>${labels[st] || st}</span>
+        <span style="background:var(--card2);color:var(--muted);font-size:9px;padding:1px 6px;border-radius:10px;border:1px solid var(--border)">${by[st].length}</span>
         <span style="flex:1;height:1px;background:var(--border)"></span>
-      </div>`;
-      html += byStage[stage].sort((a,b)=>urgencyScore(a)-urgencyScore(b)).map(renderCard).join('');
-    });
-    // Any stages not in stageOrder
-    Object.keys(byStage).forEach(stage => {
-      if (!stageOrder.includes(stage)) {
-        html += `<div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);padding:8px 14px 4px">${stage}</div>`;
-        html += byStage[stage].map(renderCard).join('');
-      }
-    });
+      </div>` + by[st].sort((x,y)=>urgencyScore(x)-urgencyScore(y)).map(renderCard).join('')).join('');
+  };
+
+  // 🔥 Deals in Motion — a live listing, an offer, or subjects
+  html += sectionHeader('hot', '🔥 Deals in Motion', 'var(--hot)', dealsInMotion.length);
+  if (dealsInMotion.length) {
+    html += stageGroup(dealsInMotion, LIVE_DEAL_STAGES, {});
+  } else {
+    const closest = [...working].sort((x,y) => WORKING_STAGES.indexOf(x.stage) - WORKING_STAGES.indexOf(y.stage) || urgencyScore(x) - urgencyScore(y))[0];
+    html += `<div style="padding:4px 14px 14px;font-size:12px;color:var(--muted);line-height:1.5">Nothing live right now.${closest
+      ? ` Closest: <a href="#" onclick="event.preventDefault();jumpToLead(${closest.id})" style="color:var(--gold)">${esc(closest.name)}</a> (${esc(closest.stage)}).` : ''}</div>`;
+  }
+  html += '</div>';
+
+  // 🎯 Active Clients — committed, working toward a deal
+  if (working.length) {
+    html += sectionHeader('working', '🎯 Active Clients', 'var(--gold)', working.length);
+    html += stageGroup(working, WORKING_STAGES, { 'Listing Appointment': 'Listing prep', 'Agreement Signed': 'Agreement signed', 'Active Search': 'Searching' });
     html += '</div>';
   }
 
   // 🔑 Buyers
   if (buyers.length) {
     const id = 'buyers';
-    html += sectionHeader(id, '🔑 Buyers', 'var(--buyer)', buyers.length);
+    html += sectionHeader(id, '🔑 Buyer Leads', 'var(--buyer)', buyers.length);
     html += buyers.sort((a,b)=>urgencyScore(a)-urgencyScore(b)).map(renderCard).join('');
     html += '</div>';
   }
@@ -4146,7 +4142,7 @@ function renderPipeline() {
   // 🏷 Sellers
   if (sellers.length) {
     const id = 'sellers';
-    html += sectionHeader(id, '🏷 Sellers', 'var(--seller)', sellers.length);
+    html += sectionHeader(id, '🏷 Seller Leads', 'var(--seller)', sellers.length);
     html += sellers.sort((a,b)=>urgencyScore(a)-urgencyScore(b)).map(renderCard).join('');
     html += '</div>';
   }
