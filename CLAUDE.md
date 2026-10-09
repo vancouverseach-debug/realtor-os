@@ -33,6 +33,9 @@ Open it, see who needs you today, act, log, done. A feature belongs if it ends w
 ## Client message voice
 Friendly, casual and short, like a text from Chris. Give something useful, then invite a reply. Not pushy or corporate. No "touching base", "checking in", "excited", "amazing", "smart moves", "hope you're well". No sign-off on texts.
 
+## Demo mode
+`?demo` opens the app with made-up clients, no login, no cloud, and sample AI answers (`demoAI`). Storage keys are prefixed `demo:` so it can never touch real data; `?demo=reset` reseeds. For showing the app to people.
+
 ## Testing
 Tests run the real page in jsdom with a mocked Supabase and AI (kept outside the repo). They cover sync and device choice, 8:30pm-Vancouver date edge cases, Smart add, the pipeline, the full stats flow on the real Aug 2026 Vancouver East report numbers, the update run, and speed with 80 leads. Run the suite before every push; nothing gets pushed red.
 

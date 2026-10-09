@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-05.2">
+<meta name="ros-build" content="2026-10-09.1">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1047,6 +1047,135 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
 <!-- TOAST -->
 <div id="toast"></div>
 
+<!-- ═══ DEMO MODE (?demo): made-up clients, no login, no cloud, sample AI ═══ -->
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  if (!q.has('demo')) return;
+  window.ROS_DEMO = true;
+
+  // Every storage key gets a "demo:" prefix, so the demo can never read or touch real data.
+  const P = 'demo:', S = Storage.prototype;
+  const g = S.getItem, s = S.setItem, r = S.removeItem;
+  S.getItem = function (k) { return g.call(this, P + k); };
+  S.setItem = function (k, v) { return s.call(this, P + k, v); };
+  S.removeItem = function (k) { return r.call(this, P + k); };
+
+  const day = n => { const d = new Date(); d.setDate(d.getDate() + n); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const at = (n, h = 14) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+  if (q.get('demo') === 'reset') Object.keys(localStorage).filter(k => k.startsWith(P)).forEach(k => r.call(localStorage, k));
+  if (localStorage.getItem('ros_leads') !== null) return; // already seeded
+
+  const log = (n, note, type) => ({ date: at(n), note, type: type || note.split(' — ')[0] });
+  const leads = [
+    { id: 11, name: 'Maya Chen', firstName: 'Maya', type: 'seller', priority: 'hot', stage: 'Subjects', area: 'Vancouver East', phone: '604-555-0111',
+      criteria: '3 bed townhouse, Renfrew', budget: '$1,149,000', source: 'Referral', followUpDate: day(2),
+      notes: 'Accepted offer, subjects due in 2 days. Buyer financing is the only open subject.',
+      activityLog: [log(-12, '🤝 Met in person — listing signed'), log(-6, '📞 Called — reviewed two offers'), log(-1, '📞 Called — buyer\'s lender wants appraisal Friday')] },
+    { id: 12, name: 'Daniel Ortiz', firstName: 'Daniel', type: 'seller', priority: 'warm', stage: 'Listed', area: 'Vancouver East', phone: '604-555-0112',
+      criteria: '2 bed condo, Mount Pleasant', budget: '$689,000', source: 'Sphere',
+      activityLog: [log(-20, '🤝 Met in person — listing appointment'), log(-9, '💬 Texted — photos are up'), log(-3, '📞 Called — feedback from 4 showings')] },
+    { id: 13, name: 'Priya Natarajan', firstName: 'Priya', type: 'buyer', priority: 'hot', stage: 'Active Search', area: 'Vancouver East', phone: '604-555-0113',
+      criteria: 'Detached, Hastings-Sunrise or Renfrew', budget: '$1.6M', source: 'Open House', followUpDate: day(-1), preApproved: 'yes', timeline: '1-3 months',
+      activityLog: [log(-15, '🤝 Met in person — open house on E 6th'), log(-8, '📤 Sent listings — 4 detached under 1.6'), log(-4, '💬 Texted — wants to see the Renfrew one')] },
+    { id: 14, name: 'Owen & Leah Park', firstName: 'Owen', type: 'seller', priority: 'warm', stage: 'Listing Appointment', area: 'Vancouver East', phone: '604-555-0114',
+      criteria: 'Detached, Killarney', source: 'Referral', followUpDate: day(0),
+      activityLog: [log(-10, '📞 Called — thinking about spring vs now'), log(-2, '💬 Texted — booked listing appointment')] },
+    { id: 15, name: 'Sam Rivera', firstName: 'Sam', type: 'buyer', priority: 'warm', stage: 'Agreement Signed', area: 'Burnaby South', phone: '604-555-0115',
+      criteria: '2 bed condo near Metrotown', budget: '$750K', source: 'Instagram', followUpDate: day(3),
+      activityLog: [log(-7, '🤝 Met in person — buyer consult'), log(-5, '📩 Voicemail — sent agreement')] },
+    { id: 16, name: 'Hannah Lee', firstName: 'Hannah', type: 'buyer', priority: 'warm', stage: 'Contacted', area: 'Vancouver West', phone: '604-555-0116',
+      criteria: '1 bed condo, Kitsilano', budget: '$600K', source: 'Open House',
+      activityLog: [log(-6, '💬 Texted — thanks for coming by')] },
+    { id: 17, name: 'Marcus Webb', firstName: 'Marcus', type: 'seller', priority: 'warm', stage: 'New Lead', area: 'North Vancouver', phone: '604-555-0117',
+      criteria: 'Townhouse, Lynn Valley', source: 'Sphere', activityLog: [] },
+    { id: 18, name: 'Ivy Tran', firstName: 'Ivy', type: 'buyer', priority: 'warm', stage: 'New Lead', area: 'Port Moody', email: 'ivy@example.com',
+      criteria: 'Townhouse, Port Moody', budget: '$1.1M', source: 'Other', activityLog: [log(-2, '📝 Note — met at a friend\'s BBQ')] },
+    { id: 19, name: 'Ben Kowalski', firstName: 'Ben', type: 'buyer', priority: 'cold', stage: 'Active Search', area: 'Coquitlam', phone: '604-555-0119',
+      criteria: 'Detached, Burke Mountain', budget: '$1.8M', source: 'Open House',
+      activityLog: [log(-75, '📤 Sent listings'), log(-60, '📱 No answer')] },
+    { id: 20, name: 'Grace Okafor', firstName: 'Grace', type: 'buyer', priority: 'warm', stage: 'Contacted', area: 'Vancouver East', phone: '604-555-0120',
+      criteria: '2 bed condo, Grandview-Woodland', budget: '$700K', source: 'Referral',
+      activityLog: [log(-30, '📞 Called — renting until spring')] }
+  ];
+  leads.forEach(l => { l.lastContactDate = l.activityLog.length ? l.activityLog[l.activityLog.length - 1].date.slice(0, 10) : null; l.tasks = []; });
+  const past = [
+    { id: 101, name: 'Tom & Ana Silva', phone: '604-555-0131', transaction: 'Bought condo in Hastings-Sunrise, 2024', closing: '2024-06-14', checkinMonths: 3, lastCheckin: at(-120), area: 'Vancouver East' },
+    { id: 102, name: 'Rachel Kim', phone: '604-555-0132', transaction: 'Sold townhouse in Renfrew, 2025', closing: '2025-03-02', checkinMonths: 3, lastCheckin: at(-40), area: 'Vancouver East' },
+    { id: 103, name: 'Jordan Blake', email: 'jordan@example.com', transaction: 'Bought detached in Burnaby South, 2023', closing: '2023-09-20', checkinMonths: 6, lastCheckin: at(-200), area: 'Burnaby South' }
+  ];
+  const showings = [
+    { id: 201, type: 'showing', address: '2xxx E 3rd Ave (Renfrew detached)', price: '$1,589,000', client: 'Priya Natarajan', leadId: 13, date: day(1), time: '17:30', notes: '', done: false },
+    { id: 202, type: 'appointment', address: 'Listing appointment, Killarney', client: 'Owen & Leah Park', leadId: 14, date: day(0), time: '19:00', notes: 'Bring CMA', done: false }
+  ];
+  const notes = [{ id: 301, text: 'Order sign for Daniel\'s open house Saturday', done: false, createdAt: at(-1) }];
+
+  // One month of stats, read from the public Aug 2026 Vancouver East REALTOR® Report.
+  const T = (type, o) => ({ type, ...o });
+  const stats = [{ id: 401, v: 2, month: 'Aug 2026', area: 'Vancouver East', fileName: 'Vancouver-East.pdf (sample)', readAt: at(-1),
+    data: { month: 'Aug 2026', prevMonth: 'Jul 2026', source: 'Real Estate Board of Greater Vancouver', region: null, areas: [{ name: 'Vancouver East', printed: 'Vancouver - East', total: null, types: [
+      T('Detached', { active: 655, activeLastYear: 722, sales: 69, salesLastYear: 66, dom: 37, domLastYear: 27, benchmark: 1621400, benchmarkYoY: '-9.4%', prevBenchmark: 1642100,
+        neighbourhoods: [{ name: 'Hastings Sunrise', sales: 6, active: 17, benchmark: 1557200, yoy: '-9.5%' }, { name: 'Renfrew VE', sales: 8, active: 77, benchmark: 1520900, yoy: '-8.4%' }, { name: 'Killarney VE', sales: 7, active: 52, benchmark: 1623100, yoy: '-12.2%' }] }),
+      T('Condo', { active: 511, activeLastYear: 589, sales: 83, salesLastYear: 74, dom: 35, domLastYear: 32, benchmark: 628600, benchmarkYoY: '-7.5%', prevBenchmark: 628600,
+        neighbourhoods: [{ name: 'Mount Pleasant VE', sales: 14, active: 107, benchmark: 670600, yoy: '-7.1%' }, { name: 'Grandview Woodland', sales: 6, active: 39, benchmark: 576200, yoy: '-9.9%' }] }),
+      T('Townhouse', { active: 135, activeLastYear: 141, sales: 13, salesLastYear: 28, dom: 40, domLastYear: 31, benchmark: 985400, benchmarkYoY: '-7.5%', prevBenchmark: 1009100,
+        neighbourhoods: [{ name: 'Renfrew VE', sales: 2, active: 6, benchmark: 831300, yoy: '-11.5%' }] })] }],
+      copy: { headline: "East Van split in August: detached and townhouses are a buyer's market, condos held balanced.",
+        talkingPoints: ['Detached: 69 sales against 655 listings, a 10.5% sales-to-active ratio. Buyers can negotiate.', 'Condo benchmark held at $628,600, flat on the month.', 'Townhouse sales fell 53.6% on the year. Sellers need sharp pricing.'],
+        clientText: "East Van condo benchmark held at $628,600 in August while detached slipped 9.4% on the year. Want me to pull what's sold on your street?",
+        instagram: "East Van, August 👇\nDetached benchmark $1,621,400, down 9.4% on the year.\nCondos 16.2% sales-to-active: balanced.\nTownhouses 9.6%: buyer's market.\n#EastVan #VancouverEast #VancouverRealEstate",
+        email: "August split East Van in two. Detached homes sat at a 10.5% sales-to-active ratio and townhouses at 9.6%, both buyer's territory, while condos held balanced at 16.2% with the benchmark flat at $628,600. If you've been waiting on a detached home, you have more room to negotiate than you've had in a while." } },
+    updates: {} }];
+
+  const put = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+  put('ros_leads', leads); put('ros_past', past); put('ros_showings', showings); put('ros_notes', notes); put('ros_stats', stats);
+  put('ros_market', { month: 'Aug 2026', area: 'Vancouver East', price: '', ratio: '12.7%', listings: '1,301', dom: '' });
+})();
+
+/* Sample AI for the demo: realistic answers, no API calls. */
+async function demoAI(prompt) {
+  await new Promise(r => setTimeout(r, 700));
+  const first = (prompt.match(/First name: (\w+)|Name: (\w+)/) || [])[1] || (prompt.match(/Name: (\w+)/) || [])[1] || 'there';
+  if (/turn a real estate agent's quick note/.test(prompt)) {
+    const note = (prompt.match(/"""([\s\S]*?)"""/) || [])[1] || '';
+    const skip = /^(Met|Wants|The|She|He|They|His|Her|Looking|At|Near|Under|East|West|North|South)$/;
+    const name = (note.match(/\b(?:[Mm]et|sister|brother|friend|cousin|wife|husband|named)\s+([A-Z][a-z]+)/) || [])[1]
+      || ([...note.matchAll(/\b([A-Z][a-z]{2,})\b/g)].map(m => m[1]).find(w => !skip.test(w)) || '');
+    const phone = (note.match(/\(?\d{3}\)?[\s.-]?\d{3}-?\d{4}/) || [])[0] || '';
+    const budget = (note.match(/(?:under|around|about|up to)?\s*\$?\d[\d.,]*\s?(?:k|K|m|M|million)/) || [])[0] || '';
+    const area = typeof ALL_AREAS !== 'undefined' ? (ALL_AREAS.find(a => new RegExp(a.split(' ')[0], 'i').test(note)) || (/east van|commercial|renfrew|hastings|mount pleasant|grandview/i.test(note) ? 'Vancouver East' : '')) : '';
+    const seller = /\bsell|listing\b/i.test(note);
+    return JSON.stringify({ firstName: name, lastName: '', phone, email: '', type: seller ? 'seller' : 'buyer', priority: /asap|soon|now|this month/i.test(note) ? 'hot' : 'warm',
+      source: /open house/i.test(note) ? 'Open House' : /refer|sister|brother|friend|cousin/i.test(note) ? 'Referral' : 'Other',
+      criteria: note.replace(/\s+/g, ' ').slice(0, 70), budget: budget.trim(), area, timeline: '', motivation: '', preApproved: '',
+      followUpDate: '', notes: '(Demo: in the real app Claude reads the note properly.)' });
+  }
+  if (/real estate coach/.test(prompt)) return "Call Priya first: she's waiting on the Renfrew detached and her follow-up is overdue. Maya's subjects come off in 2 days, so confirm the appraisal today. Quiet spot: Ben has gone cold for two months, and detached in his range now has room to negotiate.";
+  if (/writing a real message for/.test(prompt)) return `Hey ${first}, East Van detached is sitting at a 10.5% sales-to-active ratio right now, so buyers have real room. Want me to line up a couple this weekend?`;
+  if (/personal market-update text/.test(prompt)) {
+    const out = {};
+    prompt.split(/\n\n(?=ID: )/).forEach(block => {
+      const id = (block.match(/ID: (\w+)/) || [])[1]; if (!id) return;
+      const fn = (block.match(/First name: (\w+)/) || [])[1] || 'there';
+      const about = (block.match(/Looking for \/ bought: ([^\n]*)/) || [])[1] || '';
+      const type = /condo|apartment/i.test(about) ? 'condo' : /town/i.test(about) ? 'townhouse' : 'detached';
+      const lines = ((block.split('Numbers for them:\n')[1]) || '').split('\n');
+      const line = lines.find(l => new RegExp(' ' + type + ' \\(').test(l) && /benchmark/.test(l)) || lines.find(l => /benchmark \$/.test(l)) || '';
+      const b = line.match(/^(.*?) \(\w{3} \d{4}\): benchmark (\$[\d,]+) \(([-+]\d+\.\d)%/) || [];
+      out[id] = b[2] ? `Hey ${fn}, the ${b[1]} benchmark was ${b[2]} last month, ${b[3].startsWith('-') ? 'down ' + b[3].slice(1) : 'up ' + b[3].replace('+', '')}% on the year. Want me to pull what's sold near you?`
+                     : `Hey ${fn}, new market numbers are out. Want me to send you the ones for your area?`;
+    });
+    return JSON.stringify(out);
+  }
+  if (/Assign each person below/.test(prompt)) {
+    const out = {}; [...prompt.matchAll(/^(\w+) \| [^|]+\| (.*)$/gm)].forEach(m => { const a = ALL_AREAS.find(x => new RegExp(x.split(' ')[0], 'i').test(m[2])); out[m[1]] = a || null; });
+    return JSON.stringify(out);
+  }
+  if (/showing cheat sheet/i.test(prompt)) return '🏠 Demo cheat sheet\n• Price vs area benchmark\n• 3 questions to ask the listing agent\n• What this buyer cares about\n(In the real app Claude writes this from the listing details.)';
+  return '(Demo) In the real app, Claude writes this.';
+}
+</script>
+
 <!-- ═══ CLOUD SYNC UI ═══ -->
 <style>
 #sync-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block;transition:background .2s}
@@ -1275,6 +1404,15 @@ const ROS = (() => {
   }
 
   async function start() {
+    if (window.ROS_DEMO) { // demo: no login, no cloud
+      readyResolve(true); setStatus('off');
+      const sub = document.querySelector('.hdr-sub'); if (sub) sub.textContent = 'Demo · made-up clients';
+      const bar = document.createElement('div');
+      bar.style.cssText = 'background:var(--gold-glow);border-bottom:1px solid var(--gold-dim);color:var(--gold);font-size:11px;line-height:1.45;padding:8px 14px;display:flex;gap:10px;align-items:center';
+      bar.innerHTML = '<span style="flex:1">Demo with made-up clients. Nothing is saved to the cloud, and AI answers are samples.</span><a href="?demo=reset" style="color:var(--gold);white-space:nowrap;text-decoration:underline">Reset</a>';
+      document.querySelector('.hdr')?.insertAdjacentElement('afterend', bar);
+      return;
+    }
     await loadSupabase();
     try { if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch (e) { console.error(e); }
     if (!sb) { setStatus('off'); readyResolve(false); return; } // offline or CDN blocked: app runs locally
@@ -1424,7 +1562,7 @@ const ROS = (() => {
     $('ros-p-main').textContent = user ? (enabled ? 'Sync now' : 'Upload this device') : 'Sign in';
     $('ros-p-out').style.display = user ? '' : 'none';
   }
-  function openPanel() { renderPanel(); $('ros-panel').classList.add('show'); }
+  function openPanel() { if (window.ROS_DEMO) { toast('Cloud sync is off in the demo'); return; } renderPanel(); $('ros-panel').classList.add('show'); }
   function closePanel() { $('ros-panel').classList.remove('show'); }
   async function panelMain() {
     if (!sb) { toast("Can't reach the cloud right now", 'error'); return; }
@@ -1449,6 +1587,7 @@ const ROS = (() => {
 const KEYS = { leads:'ros_leads', past:'ros_past', market:'ros_market', focusDone:'ros_focus_done', showings:'ros_showings' };
 const GEMINI_KEY = '';
 async function callAI(prompt, maxTokens = 500, files = []) {
+  if (window.ROS_DEMO) return demoAI(prompt);
   // Goes through the Supabase "ai" function, which holds the Anthropic key server-side.
   const signedIn = await ROS.ready;
   if (!signedIn || !ROS.sb) throw new Error('Sign in to use AI features');
@@ -2979,6 +3118,7 @@ function shrinkImage(f, maxSide = 2400) {
   });
 }
 async function statsPickFile(e) {
+  if (window.ROS_DEMO) { document.getElementById('st-status').textContent = 'Uploading is off in the demo. An August report is already loaded below.'; e.target.value = ''; return; }
   const picked = [...(e.target.files || [])].slice(0, 4); if (!picked.length) return;
   const status = document.getElementById('st-status'), btn = document.getElementById('st-btn');
   status.textContent = ''; statsFiles = []; btn.disabled = true;
@@ -3249,6 +3389,7 @@ function sendUpdate(key, via) {
   const url = via === 'email'
     ? `mailto:${p.email}?subject=${encodeURIComponent(`${p.area || 'Market'} update · ${rec.month}`)}&body=${encodeURIComponent(text + '\n\nChris')}`
     : `sms:${String(p.phone).replace(/[^\d+]/g, '')}&body=${encodeURIComponent(text)}`;
+  if (window.ROS_DEMO) { toast(`Demo: this would open ${via === 'email' ? 'Mail' : 'Messages'} with the text filled in`); return; }
   window.location.href = url;
 }
 function skipUpdate(key) {
