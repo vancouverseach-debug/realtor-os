@@ -33,6 +33,9 @@ Open it, see who needs you today, act, log, done. A feature belongs if it ends w
 ## Client message voice
 Friendly, casual and short, like a text from Chris. Give something useful, then invite a reply. Not pushy or corporate. No "touching base", "checking in", "excited", "amazing", "smart moves", "hope you're well". No sign-off on texts.
 
+## Net sheet inbox
+The public Seller Net Sheet page (separate repo) lets a homeowner ask for a real value. It inserts one row into **`ros_inbox`** (SQL in `supabase/inbox.sql`: visitors can insert only, you read and clear). On every sync, `pullInbox()` turns each row into a seller lead (source "Net Sheet", follow-up today, their estimate in notes), saves it, then deletes the row. `inboxId` on the lead prevents doubles if the delete fails.
+
 ## Demo mode
 `?demo` opens the app with made-up clients, no login, no cloud, and sample AI answers (`demoAI`). Storage keys are prefixed `demo:` so it can never touch real data; `?demo=reset` reseeds. For showing the app to people.
 

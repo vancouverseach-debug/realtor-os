@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-09.1">
+<meta name="ros-build" content="2026-10-19.1">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -844,7 +844,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
       </div>
       <div class="field"><label>Source</label>
         <select id="q-source" onchange="syncAddFields()">
-          <option>Open House</option><option>Referral</option><option>Sphere</option><option>Wentworth</option><option>Instagram</option>
+          <option>Open House</option><option>Referral</option><option>Sphere</option><option>Wentworth</option><option>Instagram</option><option>Net Sheet</option>
           <option>Other</option>
         </select>
       </div>
@@ -892,7 +892,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
       </div>
       <div class="field"><label>Source</label>
         <select id="f-source" onchange="syncAddFields()">
-          <option>Open House</option><option>Referral</option><option>Sphere</option><option>Wentworth</option><option>Instagram</option>
+          <option>Open House</option><option>Referral</option><option>Sphere</option><option>Wentworth</option><option>Instagram</option><option>Net Sheet</option>
           <option>Other</option>
         </select>
       </div>
@@ -1374,9 +1374,47 @@ const ROS = (() => {
       const ok = await push();
       if (ok) { localStorage.setItem(LAST, String(Date.now())); setStatus(Object.keys(getPending()).length ? 'pending' : 'ok'); }
       if (changed) applyCloudChanges();
+      await pullInbox();
     } catch (e) {
       console.error('Sync failed:', e); setStatus('error');
     } finally { syncing = false; }
+  }
+
+  /* Seller leads from the public net sheet page (table ros_inbox, see supabase/inbox.sql).
+     Each row is saved as a lead first, then cleared from the inbox; inboxId stops a row being added twice. */
+  async function pullInbox() {
+    if (!enabled || !user || !sb || typeof leads === 'undefined') return;
+    const { data, error } = await sb.from('ros_inbox').select('*').order('created_at');
+    if (error) { if (!/ros_inbox|schema cache|does not exist/i.test(error.message || '')) console.error('Inbox:', error); return; }
+    if (!data || !data.length) return;
+    const fresh = data.filter(r => !leads.some(l => l.inboxId === r.id));
+    if (fresh.length) {
+      leads.unshift(...fresh.map(inboxToLead).reverse()); // newest on top
+      save(KEYS.leads, leads);
+      applyCloudChanges();
+      toast(fresh.length === 1 ? `New seller lead: ${fresh[0].name}` : `${fresh.length} new seller leads from your net sheet`);
+    }
+    const { error: delErr } = await sb.from('ros_inbox').delete().in('id', data.map(r => r.id));
+    if (delErr) console.error('Inbox clear failed:', delErr);
+  }
+
+  function inboxToLead(r) {
+    const e = r.estimate || {};
+    const money = n => (typeof n === 'number' && isFinite(n)) ? '$' + Math.round(n).toLocaleString() : '';
+    const parts = String(r.name || '').trim().split(/\s+/);
+    const est = e.price ? ` Typed a sale price of ${money(e.price)}${e.mortgage ? ` with ${money(e.mortgage)} left on the mortgage` : ''}; the page showed about ${money(e.net)} net.` : '';
+    return {
+      id: makeId(), inboxId: r.id, createdAt: r.created_at, updatedAt: new Date().toISOString(),
+      name: r.name, firstName: parts[0] || '', lastName: parts.slice(1).join(' '),
+      phone: r.phone || '', email: r.email || '',
+      type: 'seller', source: 'Net Sheet', priority: ['ASAP', '1-3 months'].includes(r.timeline) ? 'hot' : 'warm',
+      stage: 'New Lead', criteria: r.address || '', budget: money(e.price), area: (r.area && canonArea(r.area)) || '',
+      timeline: r.timeline || '', motivation: '', preApproved: '', followUpDate: todayISO(),
+      notes: (`Asked for a real number on your net sheet page.${est}` + (e.owner2yrs ? ' Has owned the home under 2 years.' : '')).trim(),
+      lastContact: 'Never', lastContactDate: null,
+      activityLog: [{ date: r.created_at, note: '📝 Note — asked for a home value on the net sheet page', type: '📝 Note' }],
+      tags: [], tasks: []
+    };
   }
 
   async function afterSignIn(u) {
