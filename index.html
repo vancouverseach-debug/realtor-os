@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-19.1">
+<meta name="ros-build" content="2026-10-20.1">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -588,7 +588,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         </select>
       </div>
       <div class="cs-row">
-        <div class="field"><label>Asking Price</label><input id="cs-price" placeholder="$1,299,000"></div>
+        <div class="field"><label>Asking Price</label><input id="cs-price" placeholder="$1,299,000" inputmode="numeric" oninput="smartInput(this,fmtPrice,event)"></div>
         <div class="field"><label>MLS #</label><input id="cs-mls" placeholder="R3094360"></div>
       </div>
       <div class="cs-row">
@@ -641,19 +641,19 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
     <!-- SELLER NET SHEET -->
     <div id="calc-seller-wrap" class="calc-card">
       <div class="field"><label>Sale Price</label>
-        <input id="ns-price" type="text" inputmode="numeric" placeholder="$1,500,000" oninput="fmtCalcInput(this);calcNetSheet()">
+        <input id="ns-price" type="text" inputmode="numeric" placeholder="$1,500,000" oninput="smartInput(this,fmtPrice,event);calcNetSheet()">
       </div>
       <div class="field"><label>Mortgage Balance Remaining</label>
-        <input id="ns-mortgage" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="fmtCalcInput(this);calcNetSheet()">
+        <input id="ns-mortgage" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheet()">
       </div>
       <div class="field"><label>Prepayment Penalty</label>
-        <input id="ns-penalty" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="fmtCalcInput(this);calcNetSheet()">
+        <input id="ns-penalty" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheet()">
       </div>
       <div class="field"><label>Legal Fees</label>
-        <input id="ns-legal" type="text" inputmode="numeric" placeholder="$1,800 (optional)" oninput="fmtCalcInput(this);calcNetSheet()">
+        <input id="ns-legal" type="text" inputmode="numeric" placeholder="$1,800 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheet()">
       </div>
       <div class="field"><label>Other Costs</label>
-        <input id="ns-other" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="fmtCalcInput(this);calcNetSheet()">
+        <input id="ns-other" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheet()">
       </div>
       <div class="calc-result" id="ns-result">
         <div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Enter a sale price to calculate</div>
@@ -668,7 +668,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         <button class="calc-side-btn" onclick="setCalcSide('both',this)">⚡ Both</button>
       </div>
       <div class="field"><label>Sale Price</label>
-        <input id="cc-price" type="number" placeholder="1,400,000" oninput="calcCommission()">
+        <input id="cc-price" type="text" inputmode="numeric" placeholder="$1,400,000" oninput="smartInput(this,fmtPrice,event);calcCommission()">
       </div>
       <div class="calc-result" id="calc-result">
         <div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Enter a sale price to calculate</div>
@@ -716,11 +716,11 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         <button class="calc-side-btn" id="tools-calc-mode-agent" onclick="setCalcModeTools('agent',this)">💰 My Commission</button>
       </div>
       <div id="tools-calc-seller-wrap" class="calc-card">
-        <div class="field"><label>Sale Price</label><input id="tns-price" type="text" inputmode="numeric" placeholder="$1,500,000" oninput="fmtCalcInputById('tns-price');calcNetSheetTools()"></div>
-        <div class="field"><label>Mortgage Balance</label><input id="tns-mortgage" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="fmtCalcInputById('tns-mortgage');calcNetSheetTools()"></div>
-        <div class="field"><label>Prepayment Penalty</label><input id="tns-penalty" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="fmtCalcInputById('tns-penalty');calcNetSheetTools()"></div>
-        <div class="field"><label>Legal Fees</label><input id="tns-legal" type="text" inputmode="numeric" placeholder="$1,800 (optional)" oninput="fmtCalcInputById('tns-legal');calcNetSheetTools()"></div>
-        <div class="field"><label>Other Costs</label><input id="tns-other" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="fmtCalcInputById('tns-other');calcNetSheetTools()"></div>
+        <div class="field"><label>Sale Price</label><input id="tns-price" type="text" inputmode="numeric" placeholder="$1,500,000" oninput="smartInput(this,fmtPrice,event);calcNetSheetTools()"></div>
+        <div class="field"><label>Mortgage Balance</label><input id="tns-mortgage" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheetTools()"></div>
+        <div class="field"><label>Prepayment Penalty</label><input id="tns-penalty" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheetTools()"></div>
+        <div class="field"><label>Legal Fees</label><input id="tns-legal" type="text" inputmode="numeric" placeholder="$1,800 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheetTools()"></div>
+        <div class="field"><label>Other Costs</label><input id="tns-other" type="text" inputmode="numeric" placeholder="$0 (optional)" oninput="smartInput(this,fmtPrice,event);calcNetSheetTools()"></div>
         <div class="calc-result" id="tns-result"><div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Enter a sale price to calculate</div></div>
       </div>
       <div id="tools-calc-agent-wrap" class="calc-card" style="display:none">
@@ -729,7 +729,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
           <button class="calc-side-btn on" onclick="setCalcSide('listing',this)">🏷 Listing</button>
           <button class="calc-side-btn" onclick="setCalcSide('both',this)">⚡ Both</button>
         </div>
-        <div class="field"><label>Sale Price</label><input id="tcc-price" type="number" placeholder="1,400,000" oninput="calcCommissionTools()"></div>
+        <div class="field"><label>Sale Price</label><input id="tcc-price" type="text" inputmode="numeric" placeholder="$1,400,000" oninput="smartInput(this,fmtPrice,event);calcCommissionTools()"></div>
         <div class="calc-result" id="tools-calc-result"><div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Enter a sale price to calculate</div></div>
       </div>
     </div>
@@ -745,7 +745,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
           </select>
         </div>
         <div class="cs-row">
-          <div class="field"><label>Asking Price</label><input id="tcs-price" placeholder="$1,299,000"></div>
+          <div class="field"><label>Asking Price</label><input id="tcs-price" placeholder="$1,299,000" inputmode="numeric" oninput="smartInput(this,fmtPrice,event)"></div>
           <div class="field"><label>MLS #</label><input id="tcs-mls" placeholder="R3094360"></div>
         </div>
         <div class="cs-row">
@@ -835,7 +835,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         <div class="field"><label>First Name *</label><input id="q-fname" placeholder="Jordan" oninput="syncAddFields()"></div>
         <div class="field"><label>Last Name</label><input id="q-lname" placeholder="Fazio" oninput="syncAddFields()"></div>
       </div>
-      <div class="field"><label>Phone</label><input id="q-phone" placeholder="(604) 555-1234" type="tel" oninput="syncAddFields()"></div>
+      <div class="field"><label>Phone</label><input id="q-phone" placeholder="(604) 555-1234" type="tel" oninput="smartInput(this,fmtPhone,event);syncAddFields()"></div>
       <div class="field"><label>Type</label>
         <select id="q-type" onchange="syncAddFields()">
           <option value="buyer">Buyer</option><option value="seller">Seller</option>
@@ -857,7 +857,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
         <div class="field"><label>Last Name</label><input id="f-lname" placeholder="Fazio" oninput="syncAddFields()"></div>
       </div>
       <div class="form-row">
-        <div class="field"><label>Phone</label><input id="f-phone" type="tel" placeholder="(604) 555-1234" oninput="syncAddFields()"></div>
+        <div class="field"><label>Phone</label><input id="f-phone" type="tel" placeholder="(604) 555-1234" oninput="smartInput(this,fmtPhone,event);syncAddFields()"></div>
         <div class="field"><label>Email</label><input id="f-email" type="email" placeholder="email@..."></div>
       </div>
       <div class="field"><label>Type</label>
@@ -869,7 +869,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
       <div class="field"><label>Criteria / Property</label><input id="f-criteria" placeholder="East Van detached under $1.4M"></div>
       <div class="field"><label>Area</label><select id="f-area"></select></div>
       <div class="form-row">
-        <div class="field"><label>Budget</label><input id="f-budget" placeholder="$1,400,000"></div>
+        <div class="field"><label>Budget</label><input id="f-budget" placeholder="$1,400,000" inputmode="numeric" oninput="smartInput(this,fmtPrice,event)"></div>
         <div class="field"><label>Timeline</label>
           <select id="f-timeline">
             <option value="">Unknown</option><option>ASAP</option><option>1-3 months</option>
@@ -910,7 +910,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
     <div class="modal-title" id="sm-title">Schedule Showing</div>
     <input type="hidden" id="sm-type" value="showing">
     <div class="field"><label id="sm-addr-label">Property Address *</label><input id="sm-address" placeholder="3484 E 25th Ave, Vancouver"></div>
-    <div id="sm-price-row" class="field" style="display:none"><label>Listing Price</label><input id="sm-price" placeholder="$1,299,000"></div>
+    <div id="sm-price-row" class="field" style="display:none"><label>Listing Price</label><input id="sm-price" placeholder="$1,299,000" inputmode="numeric" oninput="smartInput(this,fmtPrice,event)"></div>
     <div id="sm-client-row" class="field"><label>Client / Lead</label>
       <select id="sm-client">
         <option value="" data-leadid="">— Select lead —</option>
@@ -960,7 +960,7 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
     <div class="modal-title">Add Past Client</div>
     <div class="form-row">
       <div class="field"><label>Name *</label><input id="pc-name" placeholder="Full name"></div>
-      <div class="field"><label>Phone</label><input id="pc-phone" type="tel" placeholder="(604) 555-1234"></div>
+      <div class="field"><label>Phone</label><input id="pc-phone" type="tel" placeholder="(604) 555-1234" oninput="smartInput(this,fmtPhone,event)"></div>
     </div>
     <div class="field"><label>Email</label><input id="pc-email" type="email" placeholder="email@..."></div>
     <div class="field"><label>What You Helped With</label><input id="pc-transaction" placeholder="Bought 123 Main St / Sold condo Yaletown"></div>
@@ -1406,7 +1406,7 @@ const ROS = (() => {
     return {
       id: makeId(), inboxId: r.id, createdAt: r.created_at, updatedAt: new Date().toISOString(),
       name: r.name, firstName: parts[0] || '', lastName: parts.slice(1).join(' '),
-      phone: r.phone || '', email: r.email || '',
+      phone: fmtPhone(r.phone), email: r.email || '',
       type: 'seller', source: 'Net Sheet', priority: ['ASAP', '1-3 months'].includes(r.timeline) ? 'hot' : 'warm',
       stage: 'New Lead', criteria: r.address || '', budget: money(e.price), area: (r.area && canonArea(r.area)) || '',
       timeline: r.timeline || '', motivation: '', preApproved: '', followUpDate: todayISO(),
@@ -1912,7 +1912,7 @@ function filteredLeads() {
   if (activeFilter === 'overdue') list = list.filter(l => urgencyScore(l) >= 14 && urgencyScore(l) < 999);
   if (q) list = list.filter(l =>
     l.name.toLowerCase().includes(q) ||
-    (l.phone||'').includes(q) ||
+    phoneHit(l.phone, q) ||
     (l.criteria||'').toLowerCase().includes(q) ||
     (l.email||'').toLowerCase().includes(q)
   );
@@ -1969,10 +1969,10 @@ function renderLeadCard(l) {
   actTab = `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
       ${l.phone
-        ? `<a href="tel:${l.phone}" class="lq-btn primary" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:5px">📱 Call</a>`
+        ? `<a href="tel:${telHref(l.phone)}" class="lq-btn primary" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:5px">📱 Call</a>`
         : `<button class="lq-btn" style="opacity:.4;cursor:default">No phone</button>`}
       ${l.phone
-        ? `<a href="sms:${l.phone}" class="lq-btn" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:5px">💬 Text</a>`
+        ? `<a href="sms:${telHref(l.phone)}" class="lq-btn" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:5px">💬 Text</a>`
         : `<button class="lq-btn" style="opacity:.4;cursor:default">No phone</button>`}
       ${l.email
         ? `<a href="mailto:${l.email}" class="lq-btn" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:5px">✉ Email</a>`
@@ -2082,13 +2082,13 @@ function renderLeadCard(l) {
         </div>
       </div>
       <input class="lc-edit-field" id="ed-name-${l.id}"     value="${esc(l.name)}"         placeholder="Name"  oninput="autoSave(${l.id})">
-      <input class="lc-edit-field" id="ed-phone-${l.id}"    value="${esc(l.phone||'')}"     placeholder="Phone" type="tel"   oninput="autoSave(${l.id})">
+      <input class="lc-edit-field" id="ed-phone-${l.id}"    value="${esc(fmtPhone(l.phone))}"     placeholder="Phone" type="tel"   oninput="smartInput(this,fmtPhone,event);autoSave(${l.id})">
       <input class="lc-edit-field" id="ed-email-${l.id}"    value="${esc(l.email||'')}"     placeholder="Email" type="email" oninput="autoSave(${l.id})">
       <input class="lc-edit-field" id="ed-criteria-${l.id}" value="${esc(l.criteria||'')}"  placeholder="${l.type==='seller'?'Property address e.g. 1475 E 11th Ave':'Search criteria e.g. East Van under $1.4M'}" oninput="autoSave(${l.id})">
       <select class="lc-edit-field" id="ed-area-${l.id}" onchange="autoSave(${l.id})" aria-label="Area">${areaOptions(l.area)}</select>
       ${l.type === 'seller'
-        ? `<input class="lc-edit-field" id="ed-budget-${l.id}" value="${esc(l.budget||'')}" placeholder="Asking price e.g. $1,600,000" oninput="autoSave(${l.id})">`
-        : `<input class="lc-edit-field" id="ed-budget-${l.id}" value="${esc(l.budget||'')}" placeholder="Max budget e.g. $1,400,000" oninput="autoSave(${l.id})">`
+        ? `<input class="lc-edit-field" id="ed-budget-${l.id}" value="${esc(fmtPrice(l.budget))}" placeholder="Asking price e.g. $1,600,000" inputmode="numeric" oninput="smartInput(this,fmtPrice,event);autoSave(${l.id})">`
+        : `<input class="lc-edit-field" id="ed-budget-${l.id}" value="${esc(fmtPrice(l.budget))}" placeholder="Max budget e.g. $1,400,000" inputmode="numeric" oninput="smartInput(this,fmtPrice,event);autoSave(${l.id})">`
       }
       <div class="edit-grid">
         <div><div class="edit-grid-label">${l.type==='seller'?'List Timeline':'Buy Timeline'}</div>
@@ -2240,7 +2240,7 @@ function renderLeadCard(l) {
       </div>
       <div class="lc-sub" style="margin-top:2px">${esc(l.criteria || 'No criteria set')}</div>
       <div class="lc-contact">
-        ${l.phone ? `<a href="tel:${l.phone}" onclick="event.stopPropagation()">📱 ${esc(l.phone)}</a>` : ''}
+        ${l.phone ? `<a href="tel:${telHref(l.phone)}" onclick="event.stopPropagation()">📱 ${esc(l.phone)}</a>` : ''}
         ${l.email ? `<a href="mailto:${l.email}" onclick="event.stopPropagation()">✉</a>` : ''}
       </div>
     </div>
@@ -3621,7 +3621,7 @@ function fillFullForm(d, raw) {
     if (opt) el.value = opt.value || opt.textContent;
   };
   set('f-fname', d.firstName); set('f-lname', d.lastName);
-  set('f-phone', d.phone); set('f-email', d.email);
+  set('f-phone', d.phone && fmtPhone(d.phone)); set('f-email', d.email);
   set('f-criteria', d.criteria); set('f-budget', d.budget); set('f-notes', d.notes);
   const fa = document.getElementById('f-area'); if (fa) { fa.innerHTML = areaOptions(ALL_AREAS.includes(d.area) ? d.area : ''); }
   pick('f-type', d.type === 'seller' ? 'seller' : 'buyer');
@@ -3945,7 +3945,7 @@ function renderDailyFocus() {
   </div>
   <div id="today-market-edit" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-      <div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Benchmark</div><input id="mw-price" value="${esc(mkt.price||'')}" placeholder="$1,150,000" style="font-size:12px;padding:7px 9px"></div>
+      <div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Benchmark</div><input id="mw-price" value="${esc(fmtPrice(mkt.price))}" inputmode="numeric" oninput="smartInput(this,fmtPrice,event)" placeholder="$1,150,000" style="font-size:12px;padding:7px 9px"></div>
       <div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Avg DOM</div><input id="mw-dom" value="${esc(mkt.dom||'')}" placeholder="18" style="font-size:12px;padding:7px 9px"></div>
       <div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">New Listings</div><input id="mw-listings" value="${esc(mkt.listings||'')}" placeholder="1,240" style="font-size:12px;padding:7px 9px"></div>
       <div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Sales Ratio</div><input id="mw-ratio" value="${esc(mkt.ratio||'')}" placeholder="54%" style="font-size:12px;padding:7px 9px"></div>
@@ -4128,14 +4128,14 @@ function tdayInitiateCall() {
   const lead = leads.find(l => l.id === clm_leadId);
   if (!lead?.phone) { toast('No phone number on file','error'); return; }
   tdayLogAction('📞 Called');
-  window.location.href = `tel:${lead.phone}`;
+  window.location.href = `tel:${telHref(lead.phone)}`;
 }
 
 function tdayInitiateText() {
   const lead = leads.find(l => l.id === clm_leadId);
   if (!lead?.phone) { toast('No phone number on file','error'); return; }
   tdayLogAction('💬 Texted');
-  window.location.href = `sms:${lead.phone}`;
+  window.location.href = `sms:${telHref(lead.phone)}`;
 }
 
 function tdayLogAction(action) {
@@ -4625,12 +4625,6 @@ function setCalcSide(side, el) {
   calcCommission();
 }
 
-function fmtCalcInput(el) {
-  const raw = el.value.replace(/[^0-9]/g, '');
-  if (!raw) { el.value = ''; return; }
-  el.value = '$' + parseInt(raw).toLocaleString();
-}
-
 function parseCalcInput(id) {
   const val = document.getElementById(id)?.value || '';
   return parseFloat(val.replace(/[^0-9.]/g, '')) || 0;
@@ -4696,7 +4690,7 @@ function calcNetSheet() {
 }
 
 function calcCommission() {
-  const price = parseFloat(document.getElementById('cc-price').value) || 0;
+  const price = parseCalcInput('cc-price');
   const res   = document.getElementById('calc-result');
   if (!price) {
     res.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Enter a sale price to calculate</div>';
@@ -4767,7 +4761,7 @@ function renderPastClients() {
   const filtered = q
     ? pastClients.filter(pc =>
         pc.name.toLowerCase().includes(q) ||
-        (pc.phone||'').includes(q) ||
+        phoneHit(pc.phone, q) ||
         (pc.email||'').toLowerCase().includes(q) ||
         (pc.transaction||'').toLowerCase().includes(q))
     : pastClients;
@@ -4792,7 +4786,7 @@ function renderPastCard(pc) {
         <div class="past-name">${esc(pc.name)}</div>
         <div class="past-sub">${esc(pc.transaction||'Past client')}</div>
         <div class="lc-contact" style="margin-top:3px">
-          ${pc.phone ? `<a href="tel:${pc.phone}" onclick="event.stopPropagation()">📱 ${esc(pc.phone)}</a>` : ''}
+          ${pc.phone ? `<a href="tel:${telHref(pc.phone)}" onclick="event.stopPropagation()">📱 ${esc(pc.phone)}</a>` : ''}
           ${pc.email ? `<a href="mailto:${pc.email.split('/')[0].trim()}" onclick="event.stopPropagation()">✉ Email</a>` : ''}
         </div>
       </div>
@@ -4816,7 +4810,7 @@ function renderPastCard(pc) {
       <div id="pc-edit-${pc.id}" style="display:none">
         <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:8px">Edit Client</div>
         <input class="lc-edit-field" id="pce-name-${pc.id}"        value="${esc(pc.name)}"             placeholder="Name">
-        <input class="lc-edit-field" id="pce-phone-${pc.id}"       value="${esc(pc.phone||'')}"         placeholder="Phone">
+        <input class="lc-edit-field" id="pce-phone-${pc.id}"       value="${esc(fmtPhone(pc.phone))}"         placeholder="Phone" type="tel" oninput="smartInput(this,fmtPhone,event)">
         <input class="lc-edit-field" id="pce-email-${pc.id}"       value="${esc(pc.email||'')}"         placeholder="Email">
         <input class="lc-edit-field" id="pce-transaction-${pc.id}" value="${esc(pc.transaction||'')}"   placeholder="What you helped with">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -4997,7 +4991,7 @@ function renderArchive() {
             <div class="lc-name" style="color:var(--muted)">${esc(l.name)}</div>
             <div class="lc-sub">${esc(l.criteria||'No criteria')}</div>
             <div class="lc-contact">
-              ${l.phone?`<a href="tel:${l.phone}" style="color:var(--muted)">📱 ${esc(l.phone)}</a>`:''}
+              ${l.phone?`<a href="tel:${telHref(l.phone)}" style="color:var(--muted)">📱 ${esc(l.phone)}</a>`:''}
             </div>
           </div>
           <span style="font-size:9px;color:var(--muted);flex-shrink:0">Not interested</span>
@@ -5057,6 +5051,45 @@ function parseCSVLine(line) {
 
 /* ═══ UTILITIES ═══ */
 function esc(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Smart field formatting. Values are saved as shown ("$1,500,000", "(604) 555-1234").
+// Anything the formatter doesn't recognise ("$1.6M", "under $1.4M", "+44 ...") is left as typed.
+const digitCount = s => (String(s).match(/\d/g) || []).length;
+function fmtPrice(v) {
+  const s = String(v ?? '').trim();
+  if (!/^[\s$\d,]*$/.test(s)) return s;
+  const d = s.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  return d ? '$' + Number(d).toLocaleString('en-US') : '';
+}
+function fmtPhone(v) {
+  const s = String(v ?? '').trim();
+  if (/[^\d\s()+.\-]/.test(s) || (s.startsWith('+') && !s.startsWith('+1'))) return s;
+  let d = s.replace(/\D/g, '');
+  if (d.length === 11 && d[0] === '1') d = d.slice(1);
+  else if (d[0] === '1' || d.length > 10) return s;
+  if (d.length < 4) return d ? '(' + d : '';
+  if (d.length < 7) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+}
+const telHref = p => String(p || '').replace(/[^\d+]/g, '');
+const phoneHit = (phone, q) => { const d = q.replace(/\D/g, ''); return (phone||'').includes(q) || (d.length >= 3 && (phone||'').replace(/\D/g, '').includes(d)); };
+// oninput="smartInput(this, fmtPrice, event)": formats as you type and keeps the cursor after the same digit.
+function smartInput(el, fmt, ev) {
+  let v = el.value, pos = el.selectionStart ?? v.length;
+  // Backspace over a comma, bracket or space (the formatter would just put it back) also removes the digit before it
+  if (ev?.inputType === 'deleteContentBackward' && fmt(v).length > v.length) {
+    const i = v.slice(0, pos).search(/\d\D*$/);
+    if (i >= 0) { v = v.slice(0, i) + v.slice(i + 1); pos = i; }
+  }
+  const n = digitCount(v.slice(0, pos));
+  const out = fmt(v);
+  if (out !== el.value) {
+    el.value = out;
+    let p = 0;
+    for (let seen = 0; p < out.length && seen < n; p++) if (/\d/.test(out[p])) seen++;
+    if (document.activeElement === el) el.setSelectionRange(p, p);
+  }
+}
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text).catch(() => {
     const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
@@ -5253,14 +5286,6 @@ async function generateCheatSheetTools() {
   loading.style.display = 'none';
 }
 
-function fmtCalcInputById(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const raw = el.value.replace(/[^0-9]/g,'');
-  if (!raw) { el.value = ''; return; }
-  el.value = '$' + parseInt(raw).toLocaleString();
-}
-
 function calcNetSheetTools() {
   const parse = id => parseFloat((document.getElementById(id)?.value||'').replace(/[^0-9.]/g,''))||0;
   const price = parse('tns-price'), mortgage = parse('tns-mortgage'), penalty = parse('tns-penalty'), legal = parse('tns-legal'), other = parse('tns-other');
@@ -5276,7 +5301,7 @@ function calcNetSheetTools() {
 }
 
 function calcCommissionTools() {
-  const price = parseFloat(document.getElementById('tcc-price')?.value||0)||0;
+  const price = parseCalcInput('tcc-price');
   const res = document.getElementById('tools-calc-result');
   if (!price || !res) return;
   const tier = (p,r1,r2) => Math.min(p,100000)*r1 + Math.max(p-100000,0)*r2;
