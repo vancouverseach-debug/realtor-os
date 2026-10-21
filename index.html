@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-20.1">
+<meta name="ros-build" content="2026-10-21.1">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1392,13 +1392,14 @@ const ROS = (() => {
       leads.unshift(...fresh.map(inboxToLead).reverse()); // newest on top
       save(KEYS.leads, leads);
       applyCloudChanges();
-      toast(fresh.length === 1 ? `New seller lead: ${fresh[0].name}` : `${fresh.length} new seller leads from your net sheet`);
+      toast(fresh.length === 1 ? `New ${fresh[0].source === 'open-house' ? 'open house' : 'seller'} lead: ${fresh[0].name}` : `${fresh.length} new leads from your inbox`);
     }
     const { error: delErr } = await sb.from('ros_inbox').delete().in('id', data.map(r => r.id));
     if (delErr) console.error('Inbox clear failed:', delErr);
   }
 
   function inboxToLead(r) {
+    if (r.source === 'open-house') return openHouseToLead(r);
     const e = r.estimate || {};
     const money = n => (typeof n === 'number' && isFinite(n)) ? '$' + Math.round(n).toLocaleString() : '';
     const parts = String(r.name || '').trim().split(/\s+/);
@@ -1413,6 +1414,41 @@ const ROS = (() => {
       notes: (`Asked for a real number on your net sheet page.${est}` + (e.owner2yrs ? ' Has owned the home under 2 years.' : '')).trim(),
       lastContact: 'Never', lastContactDate: null,
       activityLog: [{ date: r.created_at, note: '📝 Note — asked for a home value on the net sheet page', type: '📝 Note' }],
+      tags: [], tasks: []
+    };
+  }
+
+  /* Buyer leads from the open house sign-in page (separate repo); its answers arrive in r.details. */
+  function openHouseToLead(r) {
+    const d = r.details || {};
+    const parts = String(r.name || '').trim().split(/\s+/);
+    const prop = d.property || r.address || 'the open house';
+    // Another agent's client: cold, so they go to Re-engage and don't get chased.
+    const hasAgent = d.agent === 'yes';
+    const priority = hasAgent ? 'cold' : d.timeline === '0-3' ? 'hot' : 'warm';
+    const when = t => t ? new Date(t).toLocaleString('en-CA', { timeZone: 'America/Vancouver', dateStyle: 'medium', timeStyle: 'short' }) : '';
+    const said = [
+      d.agent && !hasAgent && `Working with an agent: ${d.agent}.`,
+      (r.timeline || d.timeline) && `Timeline: ${r.timeline || d.timeline}.`,
+      d.firstTime && `First-time buyer: ${d.firstTime}.`,
+      d.preApproved && `Pre-approved: ${d.preApproved}.`,
+      d.use && `Live in or investment: ${d.use}.`,
+      d.pet && `Pet: ${d.pet}.`,
+      d.heard && `Heard about it: ${d.heard}.`,
+      d.src && `Link: ${d.src}.`,
+      d.consent ? `Agreed to texts/emails ${when(d.consentAt)}.` : 'Did not tick the text/email consent box.',
+      d.buyerGuide && 'Asked for the buyer guide.'
+    ].filter(Boolean).join(' ');
+    return {
+      id: makeId(), inboxId: r.id, createdAt: r.created_at, updatedAt: new Date().toISOString(),
+      name: r.name, firstName: parts[0] || '', lastName: parts.slice(1).join(' '),
+      phone: fmtPhone(r.phone), email: r.email || '',
+      type: 'buyer', source: 'Open House', priority,
+      stage: 'New Lead', criteria: '', budget: '', area: (r.area && canonArea(r.area)) || '',
+      timeline: r.timeline || '', motivation: '', preApproved: ['yes', 'no'].includes(d.preApproved) ? d.preApproved : '', followUpDate: hasAgent ? '' : todayISO(),
+      notes: ((hasAgent ? `Has agent: ${d.agentName || 'name not given'}. ` : '') + `Signed in at the ${prop} open house. ${said}`).trim(),
+      lastContact: 'Never', lastContactDate: null,
+      activityLog: [{ date: r.created_at, note: `📝 Note — signed in at the ${prop} open house`, type: '📝 Note' }],
       tags: [], tasks: []
     };
   }
