@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-22.1">
+<meta name="ros-build" content="2026-10-22.2">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1949,6 +1949,8 @@ function setFilter(f, el) {
 function filteredLeads() {
   const q = (document.getElementById('lead-search')?.value || '').toLowerCase().trim();
   let list = leads.filter(l => l.type !== 'archived' && l.leadType !== 'archived');
+  // Closed deals live in Clients; a search still finds them so the stage can be moved back.
+  if (!q) list = list.filter(l => !isClosedStage(l.stage));
   const getType = l => l.leadType || (l.type === 'seller' ? 'seller' : 'buyer');
   const getPrio = l => l.priority || (l.type === 'hot' ? 'hot' : l.type === 'cold' ? 'cold' : 'warm');
   if (activeFilter === 'buyer')   list = list.filter(l => getType(l) === 'buyer');
@@ -2094,7 +2096,7 @@ function renderLeadCard(l) {
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Pipeline Stage</div>
       <div class="stage-pill-grid" id="act-stage-grid-${l.id}">
-        ${stageOptions.map(s=>`<button class="stage-pick-btn ${l.stage===s?'on':''}" onclick="setStage(${l.id},'${s}',this);syncActStageGrid(${l.id},'${s}')">${s}</button>`).join('')}
+        ${stageOptions.map(s=>`<button class="stage-pick-btn ${l.stage===s?'on':''}" onclick="setStage(${l.id},'${s}',this)">${s}</button>`).join('')}
       </div>
     </div>
     <!-- SNOOZE — surfaced on Act tab -->
@@ -2781,9 +2783,9 @@ function setStage(id, stage, btn) {
   const lead = leads.find(l => l.id === id);
   if (!lead) return;
   lead.stage = stage; saveLeads();
-  // update button states without full re-render
-  const grid = document.getElementById('stage-grid-'+id);
-  if (grid) grid.querySelectorAll('.stage-pick-btn').forEach(b => b.classList.toggle('on', b.textContent.trim() === stage));
+  // update button states without full re-render (both pickers: Act tab and More)
+  ['stage-grid-', 'act-stage-grid-'].forEach(p => document.getElementById(p+id)
+    ?.querySelectorAll('.stage-pick-btn').forEach(b => b.classList.toggle('on', b.textContent.trim() === stage)));
   // update stage pill on collapsed card
   const pill = document.querySelector(`#lc-${id} .stage-pill`);
   if (pill) {
@@ -2799,6 +2801,7 @@ function setStage(id, stage, btn) {
   }
   toast(`Stage: ${stage}`);
   onStageChanged(lead);
+  if (isClosedStage(stage)) renderLeads(); // closed deals leave the Leads list
 }
 
 /* ═══ ACTIVITY LOG ═══ */
@@ -4464,7 +4467,7 @@ function saveMarket() {
 /* ═══ PIPELINE ═══ */
 function renderPipeline() {
   const wrap = document.getElementById('pipeline-wrap');
-  const active = leads.filter(l => l.type !== 'archived');
+  const active = leads.filter(l => l.type !== 'archived' && !isClosedStage(l.stage)); // closed deals live in Clients
   if (!active.length) { wrap.innerHTML = '<div class="empty"><div class="ei">📊</div><p>No leads yet.</p></div>'; return; }
 
   // Cold always wins: a cold lead sits in Cold / Re-engage only, whatever its stage (stage is kept for when they wake up).
@@ -5501,11 +5504,6 @@ function setCalcModeTools(mode, el) {
   document.getElementById('tools-calc-agent-wrap').style.display = mode==='agent'?'block':'none';
 }
 
-function syncActStageGrid(leadId, stage) {
-  // keep the log tab stage grid in sync
-  const logGrid = document.getElementById('stage-grid-'+leadId);
-  if (logGrid) logGrid.querySelectorAll('.stage-pick-btn').forEach(b => b.classList.toggle('on', b.textContent.trim()===stage));
-}
 </script>
 </body>
 </html>
