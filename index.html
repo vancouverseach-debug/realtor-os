@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-22.2">
+<meta name="ros-build" content="2026-10-22.3">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -3173,9 +3173,15 @@ function statsPeople() {
   pastClients.forEach(pc => {
     out.push({ key: 'P' + pc.id, ref: pc, kind: 'past client', name: pc.name, first: (pc.name || '').split(/[ &,]/)[0],
       phone: pc.phone, email: pc.email, area: pc.area || '', about: pc.transaction || '', detail: pc.notes || '',
-      stage: pc.closing ? 'Closed ' + fmtDateShort(pc.closing) : 'Past client', touched: pc.lastCheckin ? todayISO(new Date(pc.lastCheckin)) : null });
+      stage: 'Past client', closing: pc.closing || '', touched: pc.lastCheckin ? todayISO(new Date(pc.lastCheckin)) : null });
   });
   return out;
+}
+/* "Sam and Alex", "Jo & Pat Rivera", "Lee, Kim & Max Ortiz" -> first names to greet */
+function greetNames(name) {
+  const parts = String(name || '').split(/\s*(?:&|\band\b|,|\+)\s*/i).map(x => x.trim().split(/\s+/)[0]).filter(Boolean);
+  if (parts.length < 2) return parts[0] || '';
+  return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
 }
 function neededAreas() {
   const set = new Set([homeArea()]);
@@ -3448,29 +3454,50 @@ async function writeMarketUpdates() {
       const batch = todo.slice(i, i + 8);
       btn.textContent = `Writing ${Math.min(i + 8, todo.length)} of ${todo.length}…`;
       const people = batch.map(p => [
-        `ID: ${p.key}`, `First name: ${p.first}`, `Who: ${p.kind} (${p.stage})${p.cold ? ', gone quiet' : ''}`,
-        `Area: ${p.area || 'unknown'}`, p.about && `Looking for / bought: ${p.about}`,
+        `ID: ${p.key}`, `Greet as: ${greetNames(p.name) || p.first}`,
+        `Who: ${p.kind}${p.kind === 'past client' ? '' : ` (${p.stage})`}${p.cold ? ', gone quiet' : ''}`,
+        p.kind === 'past client' && (p.closing ? `Bought/sold with Chris: ${fmtDateShort(p.closing)} (${agoText(p.closing)})` : 'Bought/sold with Chris: date not saved, assume it was a while ago'),
+        `Area: ${p.area || 'unknown'}`, p.about && `${p.kind === 'past client' ? 'Their deal' : 'Looking for'}: ${p.about}`,
         `Last contact: ${p.touched ? `${fmtDateShort(p.touched)} (${agoText(p.touched)})` : 'never logged'}`,
         `Numbers for them:\n${areaStatLine(rec, p.area) || 'none'}`].filter(Boolean).join('\n')).join('\n\n');
-      const prompt = `Write a short personal market-update text from Chris Zenone (Vancouver realtor, Oakwyn) to each person below. TODAY is ${todayStr}. The stats are for ${rec.month}.
+      const prompt = `You're writing quick personal texts from Chris Zenone, a Vancouver realtor, to people he already knows. TODAY is ${todayStr}. The market numbers are for ${rec.month}.
 
 ${people}
 
-RULES for each text:
-- Max 2 sentences, under 40 words. Use their first name. No sign-off (it's sent from Chris's phone).
-- Use ONE real number from "Numbers for them", copied exactly, with its property type: their type if you can tell (condo, townhouse, detached), otherwise the one that best fits. Never compute, round differently or invent a number.
-- Past clients: what homes like theirs did. Never state what their own home is worth.
-- Buyer leads: what it means for their search (leverage, choice, competition). Seller leads: what it means for pricing or timing.
-- If the numbers say "No numbers for ...", say it's region-wide, not their area.
-- If last contact was over 60 days ago or never, open naturally without pretending you spoke recently.
-- End with an easy yes/no question or offer.
-- Direct, warm, real. Never: "excited", "amazing", "hot market", "touching base", "checking in", "hope you're well", "smart moves".
+HOW CHRIS TEXTS
+- Like a friend who happens to know real estate. Short, plain, a bit casual, with contractions. 1 or 2 sentences, under 35 words.
+- Open with "Hey" or "Hi" and the names in "Greet as", exactly as given. No sign-off.
+- Talk about the market the way a person would out loud, not like a market report. Never use these: "saw", "brought", "favored", "demand", "inventory", "serious offers", "in your favor", "property move", "property shift", "next move", "your criteria", "market conditions", "touching base", "checking in", "hope you're well", "excited", "amazing", "hot market", "smart moves".
+- No em dashes or en dashes. Use a period or a comma.
+- Never repeat their street address or unit number back to them.
+- Only congratulate them on a purchase or sale if "Bought/sold with Chris" was 14 days ago or less.
+
+WHAT TO SAY
+- Past client: they already bought or sold, so never ask if they want to move, buy, sell or list. Share one thing about homes like theirs they'd find interesting, then either ask something easy about them or the place, or offer to send a rough idea of what places like theirs are going for. Never say what their own home is worth.
+- Buyer lead: what the numbers mean for their search in plain words (more to pick from, room to negotiate, things going fast). End by offering something concrete: sending a few listings, or a quick call.
+- Seller lead: what it means for their price or timing. Offer to run real numbers on their place.
+- Gone quiet, or last contact over 60 days ago, or never: say it's been a while, lightly. Don't pretend you spoke recently and don't guilt them.
+
+NUMBERS
+- Use at most ONE number from "Numbers for them", copied exactly, with its property type (condo, townhouse, detached). If no number fits naturally, use none. Never compute, round or invent a number.
+- If the numbers say "No numbers for ...", say it's across the region, not their area.
+
+GOOD (for the style only; [X] stands for a real number, never copy these)
+"Hey Marcus, townhouses near you are taking about [X] days to sell, so there's room to negotiate. Want me to send a couple that fit?"
+"Hi Grace and Tom, condos like yours in Mount Pleasant are still selling in under [X] days. How's the place treating you?"
+"Hey Dana, been a while. Detached homes around you sold for a median of [X] last month. Want me to run real numbers on yours?"
+
+BAD (never write like this)
+"Hi Riley, September saw strong buyer demand across Vancouver. Less inventory means serious offers win. Ready to discuss your criteria?"
+"Morgan, September brought real choice for buyers willing to move fast. Any chance you're thinking about a property shift soon?"
+"Jamie, congrats on closing today! September condos in your range stayed competitive."
+
 Reply with ONLY a JSON object mapping each ID to its text, e.g. {"L12": "…", "P101": "…"}`;
       const text = await callAI(prompt, 1800);
       const m = text.match(/\{[\s\S]*\}/); if (!m) throw new Error('bad reply');
       const map = JSON.parse(m[0]);
       batch.forEach(p => {
-        if (typeof map[p.key] === 'string' && map[p.key].trim()) { rec.updates[p.key] = { text: map[p.key].trim(), status: 'draft' }; done++; }
+        if (typeof map[p.key] === 'string' && map[p.key].trim()) { rec.updates[p.key] = { text: map[p.key].trim().replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/,\s*([.?!])/g, '$1'), status: 'draft' }; done++; }
       });
       save('ros_stats', marketStats);
       renderStats();
@@ -3481,6 +3508,14 @@ Reply with ONLY a JSON object mapping each ID to its text, e.g. {"L12": "…", "
     status.textContent = done ? `${done} written, then it stopped. Tap again to finish the rest.`
       : /Sign in/.test(e.message) ? e.message : "Couldn't write the updates right now. Try again in a minute.";
   } finally { statsUpdateBusy = false; renderStats(); }
+}
+function rewriteMarketUpdates() {
+  const rec = statsRec();
+  if (!rec || !rec.updates || statsUpdateBusy) return;
+  Object.keys(rec.updates).forEach(k => { if (rec.updates[k].status === 'draft') delete rec.updates[k]; });
+  save('ros_stats', marketStats);
+  renderStats();
+  writeMarketUpdates();
 }
 function editUpdate(key, el) {
   const rec = statsRec(); if (!rec || !rec.updates || !rec.updates[key]) return;
@@ -3580,6 +3615,7 @@ function renderUpdateRun(rec) {
     ${people.length ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${sent} of ${people.length} sent</div>` : ''}
     <div id="st-run-status" style="font-size:11px;color:var(--text-dim);margin-bottom:6px"></div>
     ${pending ? `<button class="gen-btn" id="st-run-btn" onclick="writeMarketUpdates()">✦ Write market updates · ${pending} ${pending === 1 ? 'person' : 'people'}</button>` : ''}
+    ${!pending && people.some(p => ups[p.key].status === 'draft') ? `<button class="lq-btn" id="st-run-btn" style="width:100%;margin-bottom:8px" onclick="rewriteMarketUpdates()">↻ Rewrite unsent drafts</button><div style="font-size:10px;color:var(--muted);margin:-4px 0 8px">Sent and skipped ones stay. Edits you made to unsent drafts get replaced.</div>` : ''}
     ${people.map(p => {
       const u = ups[p.key], done = u.status === 'sent', skipped = u.status === 'skipped';
       const facts = areaStatLine(rec, p.area) || '';
