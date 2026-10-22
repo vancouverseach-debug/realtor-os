@@ -41,6 +41,8 @@ The public Seller Net Sheet page (separate repo) lets a homeowner ask for a real
 
 ## Testing
 Tests run the real page in jsdom with a mocked Supabase and AI (kept outside the repo). They cover sync and device choice, 8:30pm-Vancouver date edge cases, Smart add, the pipeline, the full stats flow on the real Aug 2026 Vancouver East report numbers, the update run, and speed with 80 leads. Run the suite before every push; nothing gets pushed red.
+- **That original suite is not on this Mac** (searched Oct 22, 2026). What's here is `~/realtor-os-tests`: Closed → Clients, backfill, hiding closed deals, the stage highlight and client check-ins, with the clock frozen at 8:30pm Vancouver. Run it with `cd ~/realtor-os-tests && PATH="$HOME/.local/node/bin:$PATH" npm test`. Node lives in `~/.local/node` (no Homebrew).
+- **Run `~/realtor-os-tests` before every push. If anything fails, don't push**: fix it first or report the failure.
 
 ## Decided / parked
 - Paragon direct access: no (needs a board data agreement; scraping risks the licence). CSV exports or the IDX/Repliers route are possible later.
