@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-21.1">
+<meta name="ros-build" content="2026-10-22.1">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1018,6 +1018,17 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
       <button onclick="qamMarkDone()" style="padding:14px;background:var(--card2);border:1px solid var(--border);border-radius:var(--rs);color:var(--seller);font-size:13px;text-align:left;cursor:pointer">✓ Mark done for today</button>
       <button onclick="qamOpenLead()" style="padding:14px;background:var(--card2);border:1px solid var(--border);border-radius:var(--rs);color:var(--buyer);font-size:13px;text-align:left;cursor:pointer">→ Open full lead</button>
       <button onclick="qamArchive()" style="padding:14px;background:var(--card2);border:1px solid rgba(192,57,43,.3);border-radius:var(--rs);color:var(--red);font-size:13px;text-align:left;cursor:pointer">🚫 Not interested</button>
+    </div>
+  </div>
+</div>
+
+<!-- LONG HOLD MENU — PAST CLIENTS -->
+<div class="modal-bg" id="past-action-modal" onclick="closeBg(event,'past-action-modal')">
+  <div class="modal" style="max-height:fit-content">
+    <div class="modal-title" id="pqm-name" style="margin-bottom:16px"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button onclick="pcqLogCheckin()" style="padding:14px;background:var(--card2);border:1px solid var(--border);border-radius:var(--rs);color:var(--seller);font-size:13px;text-align:left;cursor:pointer">✓ Log check-in <span style="color:var(--muted);font-size:11px">· next in 90 days</span></button>
+      <button onclick="pcqOpenClient()" style="padding:14px;background:var(--card2);border:1px solid var(--border);border-radius:var(--rs);color:var(--buyer);font-size:13px;text-align:left;cursor:pointer">→ Open client</button>
     </div>
   </div>
 </div>
@@ -2495,6 +2506,7 @@ function confirmStagePrompt() {
     lead.stage = stage;
     saveLeads(); renderLeads();
     toast(`Stage → ${stage} ✓`);
+    onStageChanged(lead);
   }
   modal.classList.remove('open');
 }
@@ -2619,6 +2631,38 @@ function qamArchive() {
   renderDailyFocus();
   toast('Archived ✓');
 }
+// Long-press menu for past clients (Today → Check In, and the Clients tab)
+let _pcq = { id:null, key:null, el:null };
+function pcqStart(pcId, key, el) {
+  _qamOpened = false;
+  _qamTimer = setTimeout(() => { _qamTimer = null; _qamOpened = true; if (navigator.vibrate) navigator.vibrate(40); pcqOpen(pcId, key, el); }, 500);
+}
+function pcqOpen(pcId, key, el) {
+  const pc = pastClients.find(p => p.id === pcId);
+  if (!pc) return;
+  _pcq = { id:pcId, key, el };
+  document.getElementById('pqm-name').textContent = pc.name;
+  document.getElementById('past-action-modal').classList.add('open');
+}
+function pcqLogCheckin() {
+  const pc = pastClients.find(p => p.id === _pcq.id);
+  closeModal('past-action-modal');
+  if (!pc) return;
+  logPastCheckin(pc);
+  if (_pcq.key) { focusDone[_pcq.key] = true; save(KEYS.focusDone, focusDone); }
+  renderDailyFocus(); renderPastClients();
+  toast('Check-in logged ✓ Next in 90 days');
+}
+function pcqOpenClient() {
+  closeModal('past-action-modal');
+  const id = _pcq.id;
+  document.querySelector('[onclick*="switchTab(\'past\'"]')?.click();
+  setTimeout(() => {
+    const card = document.getElementById('pc-' + id);
+    if (card) { card.scrollIntoView({behavior:'smooth',block:'center'}); document.getElementById('pc-body-' + id)?.classList.add('open'); }
+  }, 120);
+}
+
 let _lpTimer = null;
 
 function startLongPress(id, action, el) {
@@ -2754,6 +2798,7 @@ function setStage(id, stage, btn) {
     pill.textContent = stage;
   }
   toast(`Stage: ${stage}`);
+  onStageChanged(lead);
 }
 
 /* ═══ ACTIVITY LOG ═══ */
@@ -3929,13 +3974,18 @@ function renderDailyFocus() {
     .sort((a,b) => (a.time||'').localeCompare(b.time||''));
   const todayAll = todayShowings; // includes both showings and appointments
 
-  // Past client touches due
-  const pcTouches = pastClients.filter(pc => {
-    if (!pc.lastCheckin) return true;
-    const months = parseInt(pc.checkinMonths)||3;
-    const due = new Date(pc.lastCheckin); due.setMonth(due.getMonth()+months);
-    return due <= now;
-  }).slice(0,3);
+  // Check In: home anniversaries in the next 7 days (unless contacted this week), then check-ins due, most overdue first
+  const pcTouches = pastClients.map(pc => {
+    const ann = anniversaryInDays(pc);
+    const recent = pc.lastCheckin && daysSince(pc.lastCheckin) <= 7;
+    if (ann !== null && ann <= 7 && !recent) {
+      const yrs = parseDay(addDaysISO(todayISO(), ann)).getFullYear() - parseDay(pc.closing).getFullYear();
+      return { pc, sort: ann - 100000, why: `🔑 ${yrs}-year home anniversary ${ann === 0 ? 'today' : 'in ' + ann + 'd'}`, action: 'Happy home anniversary text' };
+    }
+    if (!isCheckinDue(pc)) return null;
+    const next = nextCheckinDay(pc);
+    return { pc, sort: next ? -daysSince(next) : 0, why: next ? `Check-in due ${agoText(next)}` : 'Never checked in', action: 'Check in — referral ask' };
+  }).filter(Boolean).sort((a,b) => a.sort - b.sort);
 
   // Birthday / anniversary alerts
   const dateAlerts = getPastAlerts();
@@ -4062,26 +4112,30 @@ function renderDailyFocus() {
   // ── PAST CLIENT TOUCH — collapsed by default ──
   const pcHTML = pcTouches.length ? `
     <div class="today-section-hdr" onclick="toggleTodaySection('pctouches')">
-      <div class="today-section-title" style="color:var(--past)">🤝 Client Touch</div>
+      <div class="today-section-title" style="color:var(--past)">🤝 Check In</div>
       <div class="today-section-count">${pcTouches.length}</div>
       <div class="today-chevron" id="today-chevron-pctouches" style="transform:rotate(${todayState.pctouches?'0':'180deg'}deg)">⌄</div>
     </div>
     <div id="today-body-pctouches" style="display:${todayState.pctouches?'block':'none'}">
-      ${pcTouches.map(pc => {
+      ${pcTouches.slice(0,5).map(({ pc, why, action }) => {
         const key  = todayStr + '-pct-' + pc.id;
         const done = !!focusDone[key];
-        return `<div class="tday-card cold-card" style="border-left-color:var(--past);${done?'opacity:.35':''}" onclick="focusPastTap('${key}',${pc.id},this)">
+        return `<div class="tday-card cold-card" style="border-left-color:var(--past);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;${done?'opacity:.35':''}"
+          onclick="if(!_qamOpened)focusPastTap('${key}',${pc.id},this);_qamOpened=false"
+          ontouchstart="pcqStart(${pc.id},'${key}',this)" ontouchmove="qamCancel()" ontouchend="qamCancel()"
+          oncontextmenu="event.preventDefault();pcqOpen(${pc.id},'${key}',this)">
           <div class="tday-inner">
             <div class="tday-avatar" style="background:var(--past-bg);color:var(--past)">${pc.name[0].toUpperCase()}</div>
             <div class="tday-body">
               <div class="tday-name">${esc(pc.name)}${done?' ✓':''}</div>
-              <div class="tday-criteria">${esc(pc.transaction||'Past client')}</div>
-              <div class="tday-action">→ Check in — referral ask</div>
+              <div class="tday-criteria">${esc(why)} · ${esc(pc.transaction||'Past client')}</div>
+              <div class="tday-action">→ ${action}</div>
             </div>
-            <div class="tday-right"><span class="tbadge tbadge-soon">Touch base</span></div>
+            <div class="tday-right"><span class="tbadge tbadge-soon">CHECK IN</span></div>
           </div>
         </div>`;
       }).join('')}
+      ${pcTouches.length > 5 ? `<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">+ ${pcTouches.length-5} more — see Clients tab</div>` : ''}
     </div>` : '';
 
   // ── RE-ENGAGE — collapsed by default ──
@@ -4160,15 +4214,18 @@ function tdayTap(key, leadId, el) {
   setTimeout(() => document.getElementById('clm-note')?.focus(), 150);
 }
 
+// The past client behind the open log modal (Check In cards), if any
+const clmPastClient = () => clm_el?.dataset.pcId ? pastClients.find(p => p.id === Number(clm_el.dataset.pcId)) : null;
+
 function tdayInitiateCall() {
-  const lead = leads.find(l => l.id === clm_leadId);
+  const lead = leads.find(l => l.id === clm_leadId) || clmPastClient();
   if (!lead?.phone) { toast('No phone number on file','error'); return; }
   tdayLogAction('📞 Called');
   window.location.href = `tel:${telHref(lead.phone)}`;
 }
 
 function tdayInitiateText() {
-  const lead = leads.find(l => l.id === clm_leadId);
+  const lead = leads.find(l => l.id === clm_leadId) || clmPastClient();
   if (!lead?.phone) { toast('No phone number on file','error'); return; }
   tdayLogAction('💬 Texted');
   window.location.href = `sms:${telHref(lead.phone)}`;
@@ -4207,6 +4264,9 @@ function tdayCommitLog(skipNote) {
     dedupeRecentLog(lead);
     saveLeads();
   }
+  // a reached past client counts as their check-in
+  const pc = clmPastClient();
+  if (pc && !/No answer|Voicemail/.test(entry)) logPastCheckin(pc, entry);
   toast(`Logged: ${entry} ✓`);
 
   // re-render Today tab so urgency updates immediately
@@ -4806,8 +4866,71 @@ function renderPastClients() {
     wrap.innerHTML = `<div class="empty"><div class="ei">🤝</div><p>${q ? 'No results for "'+q+'"' : 'No past clients yet.'}</p></div>${!q?'<div style="padding:0 0 12px"><button class="gen-btn" onclick="openPastModal()">+ Add Past Client</button></div>':''}`;
     return;
   }
-  wrap.innerHTML = (!q ? `<div style="margin-bottom:10px"><button class="gen-btn" onclick="openPastModal()">+ Add Past Client</button></div>` : '') +
+  wrap.innerHTML = (!q ? backfillBanner() + `<div style="margin-bottom:10px"><button class="gen-btn" onclick="openPastModal()">+ Add Past Client</button></div>` : '') +
     filtered.map(pc => renderPastCard(pc)).join('');
+}
+
+/* ═══ CLOSED → CLIENTS ═══ */
+const isClosedStage = s => s === 'Closed' || s === 'Completed';
+const phoneKey = p => String(p||'').replace(/\D/g,'').slice(-10);
+/* The client record for this lead: linked by id first, then same phone, email or name. */
+function findPastClientFor(l) {
+  const ph = phoneKey(l.phone), em = (l.email||'').trim().toLowerCase(), nm = (l.name||'').trim().toLowerCase();
+  return pastClients.find(pc => pc.id === l.pastClientId || pc.leadId === l.id)
+    || pastClients.find(pc => (ph.length === 10 && phoneKey(pc.phone) === ph)
+      || (em && (pc.email||'').trim().toLowerCase() === em)
+      || (nm && (pc.name||'').trim().toLowerCase() === nm));
+}
+/* Create (or fill in and link) the client record for a closed lead. Returns true if a new one was made. */
+function closeToClient(l, closing) {
+  const seller = (l.leadType || l.type) === 'seller';
+  const addr = seller ? (l.criteria||'').trim() : '';
+  const transaction = seller ? (addr ? `Sold ${addr}` : 'Sold') : `Bought${l.area ? ' in ' + l.area : ''}`;
+  const touched = lastTouchDate(l);
+  let pc = findPastClientFor(l);
+  const created = !pc;
+  if (created) {
+    pc = { id:makeId(), createdAt:new Date().toISOString(), name:l.name, phone:'', email:'', transaction, closing:'',
+      birthday:'', checkinMonths:'3', notes:'', area:'', activityLog:[],
+      lastCheckin: touched ? parseDay(touched).toISOString() : null,
+      nextCheckin: addDaysISO(touched || todayISO(), 90) };
+    pastClients.unshift(pc);
+  }
+  pc.leadId = l.id; l.pastClientId = pc.id;
+  ['phone','email','area','transaction'].forEach(k => { if (!pc[k]) pc[k] = k === 'transaction' ? transaction : (l[k]||''); });
+  if (!pc.closing && closing) pc.closing = closing;
+  if (l.notes && !(pc.notes||'').includes(l.notes)) pc.notes = [pc.notes, l.notes].filter(Boolean).join('\n\n');
+  const seen = new Set((pc.activityLog||[]).map(e => e.date + e.note));
+  pc.activityLog = [...(pc.activityLog||[]), ...(l.activityLog||[]).filter(e => e && !seen.has(e.date + e.note))];
+  return created;
+}
+/* Called whenever a lead's stage changes. */
+function onStageChanged(l) {
+  if (!isClosedStage(l.stage)) return;
+  if (!l.closedAt) l.closedAt = todayISO();
+  const created = closeToClient(l, l.closedAt);
+  saveLeads(); savePastClients();
+  toast(created ? `${l.name} added to Clients ✓` : `${l.name} linked to their client record ✓`);
+}
+/* Backfill: closed deals with no matching client. Listed for review first, nothing created until "Add". */
+function closedMissingFromClients() { return leads.filter(l => isClosedStage(l.stage) && !findPastClientFor(l)); }
+function backfillBanner() {
+  const missing = closedMissingFromClients();
+  if (!missing.length) return '';
+  return `<div class="past-card" style="padding:12px;margin-bottom:10px;border-color:var(--gold-dim)">
+    <div style="font-size:12px;color:var(--text);margin-bottom:8px">${missing.length} closed deal${missing.length!==1?'s aren\'t':' isn\'t'} in Clients yet. Untick any you don't want:</div>
+    ${missing.map(l => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text-dim);padding:4px 0">
+      <input type="checkbox" class="bf-pick" value="${l.id}" checked style="width:auto">
+      ${esc(l.name)} <span style="color:var(--muted)">· ${esc(l.stage)}${l.type==='archived'?' · archived':''}${(l.leadType||l.type)==='seller'&&l.criteria?' · '+esc(l.criteria):''}</span></label>`).join('')}
+    <button class="lca-btn primary" style="margin-top:8px;padding:9px;width:100%" onclick="runBackfill()">Add selected to Clients</button>
+  </div>`;
+}
+function runBackfill() {
+  const ids = [...document.querySelectorAll('.bf-pick:checked')].map(b => Number(b.value));
+  let n = 0;
+  leads.filter(l => ids.includes(l.id)).forEach(l => { if (closeToClient(l, l.closedAt)) n++; });
+  saveLeads(); savePastClients(); renderPastClients();
+  toast(`${n} client${n!==1?'s':''} added ✓`);
 }
 function renderPastCard(pc) {
   const alerts = getPastCardAlerts(pc);
@@ -4816,7 +4939,9 @@ function renderPastCard(pc) {
   const body = document.getElementById('pc-body-'+pc.id);
   const isOpen = body?.classList.contains('open');
   return `<div class="past-card" id="pc-${pc.id}">
-    <div class="past-top" onclick="togglePastCard(${pc.id})">
+    <div class="past-top" style="-webkit-touch-callout:none" onclick="if(!_qamOpened)togglePastCard(${pc.id});_qamOpened=false"
+      ontouchstart="pcqStart(${pc.id},null,null)" ontouchmove="qamCancel()" ontouchend="qamCancel()"
+      oncontextmenu="event.preventDefault();pcqOpen(${pc.id},null,null)">
       <div class="past-avatar">${pc.name[0].toUpperCase()}</div>
       <div class="past-info">
         <div class="past-name">${esc(pc.name)}</div>
@@ -4834,12 +4959,12 @@ function renderPastCard(pc) {
         ${pc.birthday ? `<div class="pm-item"><div class="pm-label">Birthday</div><div class="pm-val">${fmtDateShort(pc.birthday)}</div></div>` : ''}
       </div>
       <div class="checkin-bar">
-        <div class="checkin-label">Check-in (every ${pc.checkinMonths||3} months)</div>
+        <div class="checkin-label">Last contact: ${pc.lastCheckin ? fmtDateShort(todayISO(new Date(pc.lastCheckin))) : '—'}</div>
         <span class="checkin-status ${cs.cls}">${cs.label}</span>
       </div>
       ${pc.notes ? `<div style="font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:10px">${esc(pc.notes)}</div>` : ''}
       <div style="display:flex;gap:6px;margin-bottom:10px">
-        <button class="lca-btn primary" onclick="markPastCheckin(${pc.id})">✓ Checked In</button>
+        <button class="lca-btn primary" onclick="markPastCheckin(${pc.id})">✓ Log check-in</button>
         <button class="lca-btn" onclick="startPastEdit(${pc.id})">✏ Edit</button>
         <button class="lca-btn danger" onclick="deletePastClient(${pc.id})">✕</button>
       </div>
@@ -4855,12 +4980,8 @@ function renderPastCard(pc) {
           <div><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Birthday</div>
             <input class="lc-edit-field" id="pce-birthday-${pc.id}" type="date" value="${pc.birthday||''}" style="margin-bottom:0"></div>
         </div>
-        <div style="margin:8px 0"><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Check-in Frequency</div>
-          <select class="lc-edit-field" id="pce-checkin-${pc.id}" style="margin-bottom:0">
-            <option value="3"  ${pc.checkinMonths==='3' ?'selected':''}>Every 3 months</option>
-            <option value="6"  ${pc.checkinMonths==='6' ?'selected':''}>Every 6 months</option>
-            <option value="12" ${pc.checkinMonths==='12'?'selected':''}>Once a year</option>
-          </select></div>
+        <div style="margin:8px 0"><div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Next Check-in</div>
+          <input class="lc-edit-field" id="pce-next-${pc.id}" type="date" value="${nextCheckinDay(pc)||''}" style="margin-bottom:0"></div>
         <textarea class="lc-edit-field" id="pce-notes-${pc.id}" placeholder="Notes">${esc(pc.notes||'')}</textarea>
         <div style="display:flex;gap:7px">
           <button class="lca-btn primary" style="flex:1;padding:9px" onclick="savePastEdit(${pc.id})">Save</button>
@@ -4882,13 +5003,20 @@ function savePastEdit(id) {
   pc.transaction  = document.getElementById('pce-transaction-'+id).value.trim();
   pc.closing      = document.getElementById('pce-closing-'+id).value;
   pc.birthday     = document.getElementById('pce-birthday-'+id).value;
-  pc.checkinMonths= document.getElementById('pce-checkin-'+id).value;
+  pc.nextCheckin  = document.getElementById('pce-next-'+id).value || null;
   pc.notes        = document.getElementById('pce-notes-'+id).value.trim();
   savePastClients(); renderPastClients(); toast('Client updated ✓');
 }
+/* Check-in: last contact today, next one 90 days out. */
+function logPastCheckin(pc, note) {
+  pc.lastCheckin = new Date().toISOString();
+  pc.nextCheckin = addDaysISO(todayISO(), 90);
+  if (note) (pc.activityLog = pc.activityLog || []).push({ date: pc.lastCheckin, note });
+  savePastClients();
+}
 function markPastCheckin(id) {
   const pc = pastClients.find(p=>p.id===id);
-  if (!pc) return; pc.lastCheckin = new Date().toISOString(); savePastClients(); renderPastClients(); toast('Check-in recorded ✓');
+  if (!pc) return; logPastCheckin(pc); renderPastClients(); toast('Check-in logged ✓ Next in 90 days');
 }
 function deletePastClient(id) {
   const pc = pastClients.find(p=>p.id===id);
@@ -4903,20 +5031,38 @@ function savePastClient() {
   ['pc-name','pc-phone','pc-email','pc-transaction','pc-closing','pc-birthday','pc-notes'].forEach(id=>document.getElementById(id).value='');
   toast(`${name} added ✓`);
 }
+function addDaysISO(day, n) { const d = parseDay(day); d.setDate(d.getDate() + n); return todayISO(d); }
+/* Next check-in day. Older records without one fall back to last check-in + their old frequency; null = never checked in. */
+function nextCheckinDay(pc) {
+  if (pc.nextCheckin) return pc.nextCheckin;
+  if (!pc.lastCheckin) return null;
+  const d = parseDay(pc.lastCheckin); d.setMonth(d.getMonth() + (parseInt(pc.checkinMonths)||3));
+  return todayISO(d);
+}
+function isCheckinDue(pc) { const n = nextCheckinDay(pc); return !n || n <= todayISO(); }
+/* Days until the next home anniversary (0 = today), or null if no closing date or it's not a year old yet. */
+function anniversaryInDays(pc) {
+  const cl = parseDay(pc.closing); if (!cl) return null;
+  const today = parseDay(todayISO());
+  const an = new Date(today.getFullYear(), cl.getMonth(), cl.getDate());
+  if (an < today) an.setFullYear(an.getFullYear() + 1);
+  if (an.getFullYear() - cl.getFullYear() < 1) return null;
+  return Math.round((an - today) / 86400000);
+}
 function getCheckinStatus(pc) {
-  if (!pc.lastCheckin) return { cls:'checkin-overdue', label:'Never checked in' };
-  const months = parseInt(pc.checkinMonths)||3;
-  const due = new Date(pc.lastCheckin); due.setMonth(due.getMonth()+months);
-  const diffDays = Math.round((due-new Date())/86400000);
+  const next = nextCheckinDay(pc);
+  if (!next) return { cls:'checkin-overdue', label:'Never checked in' };
+  const diffDays = -daysSince(next);
   if (diffDays < 0)   return { cls:'checkin-overdue', label:'Overdue' };
+  if (diffDays === 0) return { cls:'checkin-soon',    label:'Due today' };
   if (diffDays <= 14) return { cls:'checkin-soon',    label:`Due in ${diffDays}d` };
-  return { cls:'checkin-ok', label:`Due ${fmtDateShort(due.toISOString())}` };
+  return { cls:'checkin-ok', label:`Next ${fmtDateShort(next)}` };
 }
 function getPastAlerts() {
+  // Birthdays only: home anniversaries show under Check In on Today.
   const alerts = []; const now = new Date(); const in7 = new Date(); in7.setDate(in7.getDate()+7);
   pastClients.forEach(pc => {
     if (pc.birthday) { const bd = new Date(pc.birthday); const ty = new Date(now.getFullYear(),bd.getMonth(),bd.getDate()); if (ty>=now&&ty<=in7) alerts.push({name:pc.name,label:`🎂 Birthday ${fmtDateShort(ty.toISOString())}`,emoji:'🎂'}); }
-    if (pc.closing)  { const cl = new Date(pc.closing);  const an = new Date(now.getFullYear(),cl.getMonth(),cl.getDate()); if (an>=now&&an<=in7) alerts.push({name:pc.name,label:`🔑 Closing anniversary ${fmtDateShort(an.toISOString())}`,emoji:'🔑'}); }
   });
   return alerts;
 }
