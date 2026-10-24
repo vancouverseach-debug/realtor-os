@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-24.1">
+<meta name="ros-build" content="2026-10-24.2">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1370,7 +1370,7 @@ const ROS = (() => {
       market = load(KEYS.market) || market; focusDone = load(KEYS.focusDone) || {};
       showings = load(KEYS.showings) || []; notes = load('ros_notes') || []; marketStats = load('ros_stats') || [];
       ['renderLeads','renderDailyFocus','renderPipeline','renderPastClients','renderNotes','renderShowings',
-       'renderMarket','renderShowingsTools','renderNotesTools','renderArchiveTools','renderStats'].forEach(f => {
+       'renderMarket','renderShowingsTools','renderNotesTools','renderArchiveTools','renderStats','autoGenerateBriefing'].forEach(f => {
         try { if (typeof window[f] === 'function') window[f](); } catch (e) { console.error(f, e); }
       });
     } catch (e) { console.error(e); location.reload(); }
@@ -2163,6 +2163,8 @@ function renderLeadCard(l) {
             onchange="autoSave(${l.id})">
         </div>
       </div>
+      <div class="edit-grid-label" style="margin:2px 0 4px">Follow Up On</div>
+      <input type="date" class="lc-edit-field" id="ed-fu-${l.id}" value="${l.followUpDate || ''}" style="margin-bottom:10px" onchange="autoSave(${l.id})">
       <div class="edit-grid-label" style="margin-bottom:6px">Source — tap to change</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
         ${sources.map(s=>`<button class="stage-pick-btn ${(l.source||'')=== s?'on':''}" onclick="quickSetSource(${l.id},'${s}',this)">${s}</button>`).join('')}
@@ -2876,8 +2878,13 @@ function saveInlineEdit(id) {
     lead.lastContactDate = lcDate;
     lead.lastContact = fmtLastContactFromDate(lcDate);
   }
+  // follow-up date (blank = no follow-up)
+  const fuEl = document.getElementById('ed-fu-'+id);
+  const fuChanged = fuEl && (fuEl.value || null) !== (lead.followUpDate || null);
+  if (fuEl) lead.followUpDate = fuEl.value || null;
   lead.updatedAt = new Date().toISOString();
   saveLeads();
+  if (fuChanged && typeof renderDailyFocus === 'function') renderDailyFocus();
 }
 
 // Auto-save — debounced, fires 800ms after last keystroke
@@ -4378,7 +4385,8 @@ async function autoGenerateBriefing(force = false) {
   const cachedDate = localStorage.getItem('ros_briefing_date');
 
   // use cached version if already generated today and not forced
-  if (!force && cachedDate === TODAY && cached) {
+  // (a cache from before ros_briefing_n existed may be the "I don't see any leads" answer, so it's redone once)
+  if (!force && cachedDate === TODAY && cached && Number(localStorage.getItem('ros_briefing_n')) > 0) {
     const el = document.getElementById('today-ai-brief');
     if (el) { el.textContent = cached; el.style.display = 'block'; }
     return;
@@ -4392,6 +4400,17 @@ async function autoGenerateBriefing(force = false) {
   const active = leads.filter(l => l.type !== 'archived');
   const urgent = active.filter(l => ['now','upcoming','checkin'].includes(getUrgencyState(l))).slice(0, 6);
   const todayShowings = showings.filter(s => s.date === todayISO() && !s.done);
+  // Leads not loaded yet (fresh device, cloud still syncing) or nothing urgent: say so plainly, skip the AI, cache nothing.
+  if (!active.length || !urgent.length) {
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (briefEl) {
+      briefEl.textContent = !active.length ? 'Loading your leads…'
+        : todayShowings.length ? `Nothing urgent on your list. Focus on today's ${todayShowings.length === 1 ? 'showing' : todayShowings.length + ' showings'}, then reach out to a past client or two.`
+        : 'Nothing urgent on your list today. Good day to reach out to a past client or two.';
+      briefEl.style.display = 'block';
+    }
+    return;
+  }
   const mkt = market;
   const dayStr = new Date().toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
 
@@ -4419,6 +4438,7 @@ Do NOT use: "touching base", "checking in", "excited", "amazing", "hope you're w
     if (briefEl) { briefEl.textContent = text; briefEl.style.display = 'block'; }
     localStorage.setItem('ros_briefing_cache', text);
     localStorage.setItem('ros_briefing_date', getTodayStr());
+    localStorage.setItem('ros_briefing_n', String(urgent.length));
   } catch(e) {
     if (briefEl) { briefEl.textContent = 'Error: ' + e.message; briefEl.style.display = 'block'; }
   }
