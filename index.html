@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Realtor OS</title>
-<meta name="ros-build" content="2026-10-22.3">
+<meta name="ros-build" content="2026-10-24.1">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1958,7 +1958,7 @@ function filteredLeads() {
   if (activeFilter === 'hot')     list = list.filter(l => getPrio(l) === 'hot');
   if (activeFilter === 'cold')    list = list.filter(l => getPrio(l) === 'cold');
   if (activeFilter === 'action')  list = list.filter(l => getUrgencyState(l) === 'now');
-  if (activeFilter === 'overdue') list = list.filter(l => urgencyScore(l) >= 14 && urgencyScore(l) < 999);
+  if (activeFilter === 'overdue') list = list.filter(l => l.followUpDate && l.followUpDate < todayISO() && urgencyScore(l) < 999);
   if (q) list = list.filter(l =>
     l.name.toLowerCase().includes(q) ||
     phoneHit(l.phone, q) ||
@@ -4534,13 +4534,18 @@ function renderPipeline() {
     return 'Follow up';
   };
 
+  // Same states as Today. "Overdue" only when a follow-up date has actually passed.
   const urgBadge = l => {
-    const u = urgencyScore(l);
-    if (u <= 1) return `<span class="pc-action" style="background:rgba(232,140,48,.25);color:var(--hot);border:1px solid rgba(232,140,48,.4)">Now</span>`;
-    if (u <= 4) return `<span class="pc-action" style="background:rgba(80,128,192,.2);color:var(--buyer)">Soon</span>`;
-    if (u <= 7) return `<span class="pc-action" style="background:rgba(74,170,122,.15);color:var(--seller)">This week</span>`;
-    // Overdue — aggressive
-    return `<span class="pc-action" style="background:rgba(192,80,80,.25);color:var(--red);border:1px solid rgba(192,80,80,.4);font-weight:500">Overdue</span>`;
+    const pill = (txt, st) => `<span class="pc-action" style="${st}">${txt}</span>`;
+    if (l.snoozeUntil && new Date(l.snoozeUntil) > new Date()) return pill('Snoozed', 'background:var(--card2);color:var(--muted);border:1px solid var(--border)');
+    const state = getUrgencyState(l);
+    if (state === 'now') return l.followUpDate && l.followUpDate < todayISO()
+      ? pill('Overdue', 'background:rgba(192,80,80,.25);color:var(--red);border:1px solid rgba(192,80,80,.4);font-weight:500')
+      : pill('Now', 'background:rgba(232,140,48,.25);color:var(--hot);border:1px solid rgba(232,140,48,.4)');
+    if (state === 'upcoming') return pill('Soon', 'background:rgba(80,128,192,.2);color:var(--buyer)');
+    if (state === 'checkin')  return pill('Check in', 'background:rgba(74,170,122,.15);color:var(--seller)');
+    if (state === 'waiting')  return pill('Waiting', 'background:var(--card2);color:var(--muted);border:1px solid var(--border)');
+    return pill('Warm', 'background:var(--card2);color:var(--muted);border:1px solid var(--border)');
   };
 
   const renderCard = l => `

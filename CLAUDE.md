@@ -6,7 +6,7 @@ Personal CRM for one realtor (Chris, Oakwyn Realty, East Vancouver). Mobile-firs
 Open it, see who needs you today, act, log, done. A feature belongs if it ends with **a person and an action**. If it ends with looking at a chart, it doesn't belong in this app (a separate page is fine).
 
 ## How it's built
-- **One file: `index.html`** (vanilla JS/HTML/CSS, no build step). Live at `vancouverseach-debug.github.io/realtor-os` via GitHub Pages from `main`.
+- **One file: `index.html`** (vanilla JS/HTML/CSS, no build step). Live at `vancouversearch.github.io/realtor-os` via GitHub Pages from `main`. (The GitHub account was renamed from vancouverseach-debug on Oct 23, 2026; old github.io links 404 and do not redirect.)
 - **Data:** every bucket is saved to `localStorage` first via `save(key,val)`, then synced to **Supabase** (`ROS` module). Buckets: `ros_leads, ros_past, ros_market, ros_focus_done, ros_showings, ros_notes, ros_stats`. Newest edit wins per bucket. A device joining with different data is asked which list to keep, and a backup goes in `ros_backup`. Changes from another device redraw in place (`applyCloudChanges`).
 - **Supabase** (project in Canada Central): table `ros_store` with row-level security (own rows only) plus `ros_history` hourly snapshots kept 30 days. SQL in `supabase/setup.sql`. Sign-ups are disabled; one user.
 - **AI:** `callAI(prompt, maxTokens, files)` calls the Supabase edge function `ai` (`supabase/functions/ai/index.ts`), which holds `ANTHROPIC_API_KEY` as a secret and accepts PDF/image attachments. **Never put an API key in index.html.** Model: Claude Haiku 4.5.
